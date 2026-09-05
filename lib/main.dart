@@ -1,36 +1,23 @@
-import 'package:flutter/material.dart';
 import 'package:device_preview/device_preview.dart';
-import 'package:proj_compras/view/inicio_view.dart';
-import 'package:proj_compras/view/cadastrar_view.dart';
-import 'package:proj_compras/view/login_view.dart';
-import 'package:proj_compras/view/recuperarsenha_view.dart';
-import 'package:proj_compras/view/sobre_view.dart';
-import 'package:proj_compras/view/home_view.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
-Future<void> main() async {
-  // Garante que os bindings do Flutter estejam prontos antes de qualquer outra coisa.
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // Inicializa o Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  await dotenv.load(fileName: ".env");
-
+/// Ponto de entrada mínimo: sem backend acoplado e sem segredos em `assets`.
+///
+/// O app real é construído no Sprint 2 — `ProviderScope`, `go_router` com
+/// guarda de autenticação e tema por tokens entram lá. Até então, este arquivo
+/// existe para manter o projeto compilando e a CI verde.
+void main() {
   runApp(
     DevicePreview(
-      enabled: true, 
-      builder: (context) => const MainApp(),
-      )
+      enabled: kDebugMode,
+      builder: (context) => const IntegraApp(),
+    ),
   );
 }
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class IntegraApp extends StatelessWidget {
+  const IntegraApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -38,16 +25,39 @@ class MainApp extends StatelessWidget {
       locale: DevicePreview.locale(context),
       builder: DevicePreview.appBuilder,
       debugShowCheckedModeBanner: false,
-      title: 'Navegação',
-      initialRoute: 'inicio',
-      routes: {
-        'inicio': (context) => InicioView(),
-        'cadastrar': (context) => CadastrarView(),
-        'login': (context) => LoginView(),
-        'recuperar' : (context) => RecuperarsenhaView(),
-        'principal' : (context) => const HomeView(),
-        'sobre' : (context) => const SobreView(),
-      }
+      title: 'Integra',
+      home: const PlaceholderHome(),
+    );
+  }
+}
+
+class PlaceholderHome extends StatelessWidget {
+  const PlaceholderHome({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final texto = Theme.of(context).textTheme;
+
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset('assets/logoappintegra.png', height: 96),
+              const SizedBox(height: 24),
+              Text('Integra', style: texto.headlineMedium),
+              const SizedBox(height: 8),
+              Text(
+                'Base limpa. As telas entram no Sprint 2.',
+                style: texto.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
