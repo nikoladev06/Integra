@@ -46,3 +46,5 @@ app.*.map.json
 .env
 .claude
 .agents
+# Gerado pelo Flutter a cada build
+**/android/**/GeneratedPluginRegistrant.java

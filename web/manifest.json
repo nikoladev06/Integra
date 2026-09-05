@@ -1,11 +1,11 @@
 {
-    "name": "proj_compras",
-    "short_name": "proj_compras",
+    "name": "Integra",
+    "short_name": "Integra",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Rede social de integração universitária.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
