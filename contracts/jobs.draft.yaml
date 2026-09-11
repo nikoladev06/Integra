@@ -1,0 +1,34 @@
+# RASCUNHO — fechado na Sprint 5. É o serviço com mais território novo:
+# introduz o tipo de conta `empresa`, que não existia no protótipo.
+openapi: 3.1.0
+info:
+  title: Integra — jobs-service (RASCUNHO)
+  version: 0.1.0-draft
+  description: |
+    Vagas de estágio e júnior publicadas por empresas, e candidaturas de alunos.
+
+    Área separada do feed: uma vaga tem estado (aberta/fechada) e uma relação
+    N:N com alunos que um post não tem. Misturar as duas coisas num só recurso
+    foi o que o protótipo fez ao chamar tudo de `ProfessionalPost`.
+
+paths:
+  /jobs/empresas:
+    post: { summary: Cadastra empresa (provisionamento manual na Sprint 5) }
+  /jobs/vagas:
+    get:
+      summary: Lista vagas abertas
+      description: Filtros previstos — universidade, curso, modalidade, tipo.
+    post: { summary: Publica vaga (exige tipo == empresa) }
+  /jobs/vagas/{vagaId}:
+    get: { summary: Detalhe da vaga }
+    patch: { summary: Edita ou encerra (só a empresa autora) }
+  /jobs/vagas/{vagaId}/candidaturas:
+    get: { summary: Candidaturas recebidas (só a empresa autora) }
+    post: { summary: Candidata o aluno autenticado (idempotente) }
+  /jobs/candidaturas/me:
+    get: { summary: Minhas candidaturas e seus estados }
+
+# EM ABERTO PARA A SPRINT 5
+# - como uma empresa é verificada? (na Sprint 5, manualmente)
+# - a empresa vê o perfil completo do candidato ou só o público?
+# - estados da candidatura: enviada -> visualizada -> ? Quem transiciona?

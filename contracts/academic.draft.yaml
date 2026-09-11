@@ -1,0 +1,41 @@
+# RASCUNHO — fechado na Sprint 4. Não implementar contra este arquivo.
+# Serve para: (a) reservar os nomes de recurso agora, (b) revelar cedo o que o
+# núcleo precisa expor. A regra de visibilidade abaixo é a razão de o serviço existir.
+openapi: 3.1.0
+info:
+  title: Integra — academic-service (RASCUNHO)
+  version: 0.1.0-draft
+  description: |
+    Posts institucionais publicados por contas do tipo `faculdade`, gerais ou
+    restritos a um curso, com curtidas e comentários dos alunos afiliados.
+
+    DECISÃO ESTRUTURAL: a visibilidade é resolvida no serviço, na consulta.
+    O cliente nunca recebe um post que não deveria ver e depois filtra — isso
+    transformaria o filtro numa decoração de UI, contornável por qualquer um
+    lendo a resposta da API.
+
+paths:
+  /academic/posts:
+    get:
+      summary: Feed institucional do aluno autenticado
+      description: |
+        Retorna posts da universidade do aluno que sejam gerais OU restritos ao
+        curso dele. Sem parâmetro de universidade: ela vem do JWT, não da query —
+        um parâmetro deixaria o aluno pedir o feed de outra instituição.
+    post:
+      summary: Publica um post institucional
+      description: Exige `tipo == faculdade` no token. Aluno recebe 403.
+  /academic/posts/{postId}:
+    get: { summary: Detalhe de um post }
+    delete: { summary: Remove um post (só o autor) }
+  /academic/posts/{postId}/curtidas:
+    put: { summary: Curte (idempotente) }
+    delete: { summary: Descurte }
+  /academic/posts/{postId}/comentarios:
+    get: { summary: Lista comentários }
+    post: { summary: Comenta }
+
+# EM ABERTO PARA A SPRINT 4
+# - "turma" existe como entidade, ou restrição por curso basta?
+# - post restrito a MAIS DE UM curso, ou só um?
+# - faculdade edita post publicado, ou só apaga?

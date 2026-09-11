@@ -1,0 +1,1 @@
+"""Integra — user-service."""
