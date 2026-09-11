@@ -8,6 +8,9 @@ jobs:
   app:
     name: Flutter (analyze + test)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
 
@@ -22,3 +25,30 @@ jobs:
       - run: flutter analyze
 
       - run: flutter test
+
+  services:
+    name: Python (ruff + pytest + contratos)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: '0.11.9'
+          enable-cache: true
+
+      # --frozen: a CI usa exatamente o uv.lock versionado. Sem isso ela
+      # resolveria versões novas por conta própria e passaria — ou quebraria —
+      # com um conjunto de dependências que ninguém tem na máquina.
+      - run: uv sync --all-packages --frozen
+
+      - run: uv run ruff check .
+
+      - run: uv run ruff format --check .
+
+      # Inclui test_contratos.py, que falha se algum serviço expuser rota fora
+      # de contracts/.
+      - run: uv run pytest -q

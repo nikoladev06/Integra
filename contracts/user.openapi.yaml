@@ -1,0 +1,383 @@
+openapi: 3.1.0
+
+info:
+  title: Integra — user-service
+  version: 1.0.0
+  description: |
+    Perfil, tipo de conta e vínculo institucional.
+
+    Este serviço existe por causa de uma correção estrutural: no protótipo,
+    `universidade` e `curso` eram texto livre no `UserModel`, o que torna
+    impossível responder "quais alunos são desta faculdade" ou "restrito a este
+    curso" — as duas perguntas centrais do pilar Acadêmico. Aqui são entidades com
+    chave estrangeira.
+
+servers:
+  - url: https://api.integra.app
+    description: produção (Oracle Cloud, atrás do Traefik)
+  - url: http://localhost:8080
+    description: desenvolvimento local (gateway do docker compose)
+
+tags:
+  - name: perfil
+  - name: busca
+  - name: instituições
+  - name: arquivos
+
+paths:
+  /users/me:
+    get:
+      tags: [perfil]
+      summary: Perfil do usuário autenticado
+      operationId: getMe
+      responses:
+        '200':
+          description: Perfil completo, com a afiliação expandida
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Perfil' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+    patch:
+      tags: [perfil]
+      summary: Atualiza o próprio perfil
+      operationId: updateMe
+      description: |
+        Campos omitidos ficam inalterados. `email` **não** é editável aqui — mudar
+        e-mail é mudar credencial e pertence ao auth-service; sem isso, os dois
+        serviços divergem sobre quem é o usuário.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AtualizarPerfilRequest' }
+      responses:
+        '200':
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Perfil' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '409':
+          description: Username já em uso por outra conta
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: username_ja_existe, message: 'Username já existe' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /users/{userId}:
+    get:
+      tags: [perfil]
+      summary: Perfil público de outro usuário
+      operationId: getUser
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: |
+            Perfil público. Omite `email` e `telefone` — dados de contato não
+            circulam entre alunos.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PerfilPublico' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404':
+          description: Usuário não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /users:
+    get:
+      tags: [busca]
+      summary: Busca usuários por username ou nome
+      operationId: searchUsers
+      description: |
+        Substitui a busca por prefixo do protótipo, que usava o truque
+        `isLessThan: '${termo}z'` do Firestore. Aqui é `ILIKE` com índice trigram.
+
+        `universidadeId` é o filtro que sustenta "ver outros alunos da mesma
+        instituição", do pilar Acadêmico.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2 }
+          description: Casa contra username e nome completo.
+        - name: universidadeId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: cursoId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+          description: De `proximoCursor` da página anterior.
+      responses:
+        '200':
+          description: Página de resultados
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [itens]
+                properties:
+                  itens:
+                    type: array
+                    items: { $ref: '#/components/schemas/PerfilPublico' }
+                  proximoCursor:
+                    type: [string, 'null']
+                    description: Ausente ou nulo na última página.
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  /universidades:
+    get:
+      tags: [instituições]
+      summary: Lista universidades
+      operationId: listUniversidades
+      description: |
+        Alimenta o `Select` da tela de cadastro. **Sem autenticação** — é
+        consultada antes de existir conta.
+
+        Depende de seed: sem universidades e cursos carregados, o cadastro não
+        fecha. Essa é a dependência mais fácil de descobrir tarde.
+      security: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Filtro por nome ou sigla.
+      responses:
+        '200':
+          description: Universidades disponíveis
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Universidade' }
+
+  /universidades/{universidadeId}/cursos:
+    get:
+      tags: [instituições]
+      summary: Cursos de uma universidade
+      operationId: listCursos
+      security: []
+      parameters:
+        - name: universidadeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Cursos da instituição
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Curso' }
+        '404':
+          description: Universidade não encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /users/me/avatar/upload-url:
+    post:
+      tags: [arquivos]
+      summary: Emite URL pré-assinada para enviar a foto de perfil
+      operationId: createAvatarUploadUrl
+      description: |
+        O contrato entra na Sprint 1 e a implementação na Sprint 5, quando o
+        Object Storage subir — assim a tela de perfil é escrita uma vez só.
+
+        O cliente faz `PUT` do arquivo em `uploadUrl` **direto no storage**, sem
+        passar pelo serviço, e depois grava `fotoUrl` via `PATCH /users/me`.
+        Bytes de imagem nunca atravessam o user-service.
+
+        `profileImage` existia no `UserModel` do protótipo desde o começo, mas o
+        upload nunca foi implementado — o campo era sempre string vazia.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contentType, tamanhoBytes]
+              properties:
+                contentType:
+                  type: string
+                  enum: [image/jpeg, image/png, image/webp]
+                tamanhoBytes:
+                  type: integer
+                  maximum: 5242880
+                  description: Máximo 5 MB.
+      responses:
+        '201':
+          description: URL emitida
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [uploadUrl, fotoUrl, expiraEm]
+                properties:
+                  uploadUrl:
+                    type: string
+                    format: uri
+                    description: Aceita apenas `PUT` com o `contentType` declarado.
+                  fotoUrl:
+                    type: string
+                    format: uri
+                    description: URL definitiva, para gravar em `PATCH /users/me`.
+                  expiraEm: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /health:
+    get:
+      summary: Liveness e readiness
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Serviço no ar e com o banco alcançável
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+        '503':
+          description: Serviço no ar mas com dependência indisponível
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    TipoConta:
+      type: string
+      enum: [aluno, faculdade, empresa]
+      description: |
+        `faculdade` publica no pilar Acadêmico; `empresa` publica vagas no
+        Profissional. Só `aluno` é criado por autocadastro — os outros dois são
+        provisionados manualmente enquanto não há fluxo de verificação
+        institucional.
+
+    Afiliacao:
+      type: object
+      required: [universidade, curso]
+      description: O vínculo que no protótipo eram duas strings soltas.
+      properties:
+        universidade: { $ref: '#/components/schemas/Universidade' }
+        curso: { $ref: '#/components/schemas/Curso' }
+
+    Universidade:
+      type: object
+      required: [id, nome, sigla]
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string, examples: ['Faculdade de Tecnologia de Ribeirão Preto'] }
+        sigla: { type: string, examples: ['FATEC RP'] }
+
+    Curso:
+      type: object
+      required: [id, nome]
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string, examples: ['Análise e Desenvolvimento de Sistemas'] }
+
+    PerfilPublico:
+      type: object
+      required: [id, nomeCompleto, username, tipo, afiliacao, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        nomeCompleto: { type: string }
+        username: { type: string }
+        tipo: { $ref: '#/components/schemas/TipoConta' }
+        afiliacao: { $ref: '#/components/schemas/Afiliacao' }
+        fotoUrl: { type: [string, 'null'], format: uri }
+        bio: { type: [string, 'null'], maxLength: 280 }
+        criadoEm: { type: string, format: date-time }
+
+    Perfil:
+      allOf:
+        - $ref: '#/components/schemas/PerfilPublico'
+        - type: object
+          required: [email, telefone]
+          description: O próprio perfil, com os dados de contato que o público omite.
+          properties:
+            email: { type: string, format: email }
+            telefone: { type: string }
+            alteradoEm: { type: [string, 'null'], format: date-time }
+
+    AtualizarPerfilRequest:
+      type: object
+      minProperties: 1
+      description: Envie apenas os campos que mudaram.
+      properties:
+        nomeCompleto: { type: string }
+        username: { type: string, minLength: 3, pattern: '^[a-zA-Z0-9_]+$' }
+        telefone: { type: string, pattern: '^\(?\d{2}\)?[\s-]?\d{4,5}-?\d{4}$' }
+        bio: { type: [string, 'null'], maxLength: 280 }
+        fotoUrl: { type: [string, 'null'], format: uri }
+        universidadeId: { type: string, format: uuid }
+        cursoId:
+          type: string
+          format: uuid
+          description: Precisa pertencer à universidade vigente ou à enviada no mesmo PATCH.
+
+    Health:
+      type: object
+      required: [status, service]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        service: { type: string, examples: ['user-service'] }
+        version: { type: string }
+        dependencies:
+          type: object
+          additionalProperties: { type: string, enum: [ok, unreachable] }
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        fields:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+  responses:
+    NaoAutenticado:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: nao_autenticado, message: 'Sessão expirada. Faça login novamente.' }
+
+    ValidationError:
+      description: Falha de validação, com as mensagens do cliente
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: validation_error
+            message: 'Verifique os campos destacados'
+            fields:
+              username: ['Username pode conter apenas letras, números e underscore']
+
+security:
+  - bearerAuth: []

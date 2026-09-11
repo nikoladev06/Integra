@@ -1,0 +1,53 @@
+# Overlay de produção. Aplique junto do base, nunca sozinho:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Requer, no .env da VM: DOMINIO e ACME_EMAIL.
+# Antes do primeiro up:  touch acme.json && chmod 600 acme.json
+# (o Traefik recusa o arquivo se ele estiver com permissão mais aberta)
+
+services:
+  traefik:
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedByDefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # Todo HTTP vira HTTPS na borda: nenhum token de sessão trafega em claro,
+      # mesmo que um cliente antigo tente http://
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/acme/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      - --accesslog=true
+      # Sem dashboard e sem api.insecure: em produção o painel publica o mapa
+      # inteiro do roteamento para quem alcançar a porta.
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./acme.json:/acme/acme.json
+
+  auth:
+    environment:
+      INTEGRA_AMBIENTE: producao
+    labels:
+      - traefik.http.routers.auth.rule=Host(`${DOMINIO}`) && PathPrefix(`/auth`)
+      - traefik.http.routers.auth.entrypoints=websecure
+      - traefik.http.routers.auth.tls.certresolver=le
+      - traefik.http.routers.auth-health.rule=Host(`${DOMINIO}`) && Path(`/health/auth`)
+      - traefik.http.routers.auth-health.entrypoints=websecure
+      - traefik.http.routers.auth-health.tls.certresolver=le
+
+  user:
+    environment:
+      INTEGRA_AMBIENTE: producao
+    labels:
+      - traefik.http.routers.user.rule=Host(`${DOMINIO}`) && (PathPrefix(`/users`) || PathPrefix(`/universidades`))
+      - traefik.http.routers.user.entrypoints=websecure
+      - traefik.http.routers.user.tls.certresolver=le
+      - traefik.http.routers.user-health.rule=Host(`${DOMINIO}`) && Path(`/health/user`)
+      - traefik.http.routers.user-health.entrypoints=websecure
+      - traefik.http.routers.user-health.tls.certresolver=le

@@ -1,0 +1,114 @@
+# Stack de desenvolvimento local: Traefik + Postgres + os serviços do núcleo.
+# Sem TLS aqui — a camada de certificado entra em docker-compose.prod.yml, para
+# que rodar local não dependa de domínio nem de e-mail de ACME.
+#
+#   cd infra && cp .env.example .env && docker compose up --build
+#
+# Depois disso:
+#   http://localhost:8080/health/auth
+#   http://localhost:8080/health/user
+#   http://localhost:8081            painel do Traefik (só local)
+
+name: integra
+
+services:
+  traefik:
+    image: traefik:v3.3
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      # Nada é roteado sem label explícita: um contêiner novo não vaza para a
+      # internet só por subir na mesma rede.
+      - --providers.docker.exposedByDefault=false
+      - --entrypoints.web.address=:80
+      - --api.dashboard=true
+      - --api.insecure=true # SÓ local; o overlay de produção remove
+      - --accesslog=true
+    ports:
+      - "8080:80"
+      - "8081:8080"
+    volumes:
+      # Somente leitura: o Traefik precisa observar eventos do Docker, não emitir.
+      # Montar o socket com escrita dá controle do host a quem comprometer o proxy.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [borda]
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # Sem porta publicada: o banco é alcançável só pela rede interna. Expor 5432
+    # no host é como uma instância de desenvolvimento acaba na internet.
+    networks: [interna]
+
+  auth:
+    build:
+      context: ../services
+      args:
+        SERVICO: auth
+    restart: unless-stopped
+    environment:
+      INTEGRA_AMBIENTE: ${INTEGRA_AMBIENTE:-local}
+      INTEGRA_JWT_SECRET: ${INTEGRA_JWT_SECRET}
+      INTEGRA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.auth.loadbalancer.server.port=8000
+      - traefik.http.routers.auth.rule=PathPrefix(`/auth`)
+      - traefik.http.routers.auth.entrypoints=web
+      # Os dois serviços expõem `/health` no mesmo caminho, então o gateway
+      # precisa desambiguar. `replacePath` mantém o contrato honesto: dentro do
+      # serviço o caminho continua sendo `/health`, como os contratos declaram.
+      - traefik.http.routers.auth-health.rule=Path(`/health/auth`)
+      - traefik.http.routers.auth-health.entrypoints=web
+      - traefik.http.routers.auth-health.middlewares=auth-health-path
+      - traefik.http.routers.auth-health.service=auth
+      - traefik.http.middlewares.auth-health-path.replacepath.path=/health
+    networks: [borda, interna]
+
+  user:
+    build:
+      context: ../services
+      args:
+        SERVICO: user
+    restart: unless-stopped
+    environment:
+      INTEGRA_AMBIENTE: ${INTEGRA_AMBIENTE:-local}
+      INTEGRA_JWT_SECRET: ${INTEGRA_JWT_SECRET}
+      INTEGRA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.user.loadbalancer.server.port=8000
+      # Um serviço, dois prefixos: `/universidades` alimenta o Select do cadastro
+      # e é consultado sem autenticação, antes de existir conta.
+      - traefik.http.routers.user.rule=PathPrefix(`/users`) || PathPrefix(`/universidades`)
+      - traefik.http.routers.user.entrypoints=web
+      - traefik.http.routers.user-health.rule=Path(`/health/user`)
+      - traefik.http.routers.user-health.entrypoints=web
+      - traefik.http.routers.user-health.middlewares=user-health-path
+      - traefik.http.routers.user-health.service=user
+      - traefik.http.middlewares.user-health-path.replacepath.path=/health
+    networks: [borda, interna]
+
+networks:
+  # Só quem precisa receber tráfego de fora fica na rede de borda. O Postgres não
+  # está nela, então o Traefik não consegue alcançá-lo nem por engano.
+  borda:
+  interna:

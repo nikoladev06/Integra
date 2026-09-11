@@ -1,0 +1,332 @@
+openapi: 3.1.0
+
+info:
+  title: Integra — auth-service
+  version: 1.0.0
+  description: |
+    Identidade e sessão. Emite e renova JWT, e permite a troca de senha por um
+    usuário autenticado.
+
+    **Fora do escopo:** não há recuperação de senha por e-mail. Este serviço não
+    emite token de reset e não envia e-mail. Quem esqueceu a senha não tem, hoje,
+    caminho de autoatendimento.
+
+    As regras de validação abaixo são as mesmas de
+    `app/lib/features/auth/domain/auth_validators.dart`. As mensagens devem ser
+    idênticas nos dois lados: o cliente valida para dar retorno imediato, o
+    serviço valida porque é a única validação que vale.
+
+servers:
+  - url: https://api.integra.app
+    description: produção (Oracle Cloud, atrás do Traefik)
+  - url: http://localhost:8080
+    description: desenvolvimento local (gateway do docker compose)
+
+tags:
+  - name: sessão
+    description: cadastro, login e ciclo de vida do token
+  - name: senha
+    description: troca de senha do usuário autenticado
+
+paths:
+  /auth/register:
+    post:
+      tags: [sessão]
+      summary: Cadastra um novo aluno
+      operationId: register
+      description: |
+        Cria a credencial e o perfil correspondente no `user-service` na mesma
+        transação lógica. Um e-mail ou username já em uso responde `409`, não `422`
+        — o cliente precisa distinguir "formato inválido" de "já existe" para
+        escolher a mensagem.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Cadastro criado. Não faz login automático — o cliente redireciona para o login.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterResponse' }
+        '409':
+          description: E-mail ou username já cadastrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                emailEmUso:
+                  value: { code: email_ja_cadastrado, message: 'Email já cadastrado' }
+                usernameEmUso:
+                  value: { code: username_ja_existe, message: 'Username já existe' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/login:
+    post:
+      tags: [sessão]
+      summary: Autentica e emite o par de tokens
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401':
+          description: |
+            Credenciais inválidas. A mensagem é deliberadamente genérica e idêntica
+            para e-mail inexistente e senha errada — distinguir os dois entrega ao
+            atacante uma sonda de quais e-mails existem na base.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: credenciais_invalidas, message: 'E-mail ou senha incorretos' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/refresh:
+    post:
+      tags: [sessão]
+      summary: Troca um refresh token por um novo par
+      operationId: refresh
+      description: |
+        Rotação de refresh token: o token apresentado é revogado e um novo é
+        emitido. Reapresentar um refresh já usado responde `401` e revoga toda a
+        família de tokens daquela sessão — é o sinal de que o token vazou.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: Novo par emitido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401':
+          description: Refresh token inválido, expirado ou já utilizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/logout:
+    post:
+      tags: [sessão]
+      summary: Revoga o refresh token da sessão atual
+      operationId: logout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '204':
+          description: |
+            Sessão encerrada. Responde `204` mesmo se o token já era inválido —
+            logout é idempotente e o cliente não tem o que fazer com um erro aqui.
+
+  /auth/password:
+    put:
+      tags: [senha]
+      summary: Troca a senha do usuário autenticado
+      operationId: changePassword
+      description: |
+        Único caminho de mudança de senha no sistema. Exige a senha atual, o que
+        impede que um token roubado sozinho baste para sequestrar a conta.
+
+        Regras em `app/lib/features/profile/domain/password_change_validator.dart`.
+        Trocar a senha revoga todos os refresh tokens do usuário, inclusive o da
+        sessão que fez a troca — o cliente precisa refazer o login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204':
+          description: Senha alterada; todas as sessões foram revogadas
+        '401':
+          description: Senha atual incorreta
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: senha_atual_incorreta, message: 'Senha atual está incorreta' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /health:
+    get:
+      tags: [sessão]
+      summary: Liveness e readiness
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Serviço no ar e com o banco alcançável
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+        '503':
+          description: Serviço no ar mas com dependência indisponível
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [nomeCompleto, email, username, senha, telefone, universidadeId, cursoId]
+      properties:
+        nomeCompleto:
+          type: string
+          description: Pelo menos dois nomes separados por espaço.
+          examples: ['Ana Paula Souza']
+        email:
+          type: string
+          format: email
+          description: Normalizado para minúsculas antes de gravar.
+          examples: ['ana@fatec.sp.gov.br']
+        username:
+          type: string
+          minLength: 3
+          pattern: '^[a-zA-Z0-9_]+$'
+          description: Normalizado para minúsculas. Único na base.
+          examples: ['ana_souza']
+        senha:
+          type: string
+          minLength: 6
+          format: password
+        telefone:
+          type: string
+          pattern: '^\(?\d{2}\)?[\s-]?\d{4,5}-?\d{4}$'
+          examples: ['(16)99999-9999']
+        universidadeId:
+          type: string
+          format: uuid
+          description: De `GET /universidades` no user-service.
+        cursoId:
+          type: string
+          format: uuid
+          description: De `GET /universidades/{id}/cursos`. Precisa pertencer à universidade informada.
+
+    RegisterResponse:
+      type: object
+      required: [userId]
+      properties:
+        userId: { type: string, format: uuid }
+
+    LoginRequest:
+      type: object
+      required: [email, senha]
+      properties:
+        email: { type: string, format: email }
+        senha: { type: string, format: password }
+
+    ChangePasswordRequest:
+      type: object
+      required: [senhaAtual, novaSenha, confirmacao]
+      properties:
+        senhaAtual: { type: string, format: password }
+        novaSenha:
+          type: string
+          minLength: 6
+          format: password
+          description: Precisa ser diferente da senha atual.
+        confirmacao:
+          type: string
+          format: password
+          description: Precisa ser idêntica a `novaSenha`.
+
+    TokenPair:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn]
+      properties:
+        accessToken:
+          type: string
+          description: |
+            JWT assinado em HS256. Claims: `sub` (userId), `tipo`
+            (aluno|faculdade|empresa), `universidadeId`, `cursoId`, `exp`, `iat`.
+            Os demais serviços validam a assinatura sem chamar o auth-service.
+        refreshToken:
+          type: string
+          description: Opaco, guardado no servidor. Não é JWT.
+        tokenType: { type: string, const: Bearer }
+        expiresIn:
+          type: integer
+          description: Segundos até o access token expirar.
+          examples: [900]
+
+    Health:
+      type: object
+      required: [status, service]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        service: { type: string, examples: ['auth-service'] }
+        version: { type: string }
+        dependencies:
+          type: object
+          additionalProperties: { type: string, enum: [ok, unreachable] }
+          examples: [{ database: ok }]
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Identificador estável para o cliente ramificar. Nunca traduzir.
+          examples: ['validation_error']
+        message:
+          type: string
+          description: Mensagem em português, exibível ao usuário.
+        fields:
+          type: object
+          description: Erros por campo, quando `code` é `validation_error`.
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+  responses:
+    ValidationError:
+      description: |
+        Falha de validação. As mensagens em `fields` são exatamente as de
+        `auth_validators.dart` — o cliente pode exibi-las sem traduzir.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: validation_error
+            message: 'Verifique os campos destacados'
+            fields:
+              email: ['Insira um e-mail válido (ex: usuario@exemplo.com)']
+              senha: ['Senha deve ter no mínimo 6 caracteres']
+              nomeCompleto: ['Nome completo deve ter pelo menos 2 nomes']
+
+security:
+  - bearerAuth: []
