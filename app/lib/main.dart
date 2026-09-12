@@ -1,61 +1,70 @@
 import 'package:device_preview/device_preview.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
-/// Ponto de entrada mínimo: sem backend acoplado e sem segredos em `assets`.
-///
-/// O app real é construído no Sprint 2 — `ProviderScope`, `go_router` com
-/// guarda de autenticação e tema por tokens entram lá. Até então, este arquivo
-/// existe para manter o projeto compilando e a CI verde.
+import 'package:integra/core/router/app_router.dart';
+import 'package:integra/core/theme/integra_theme.dart';
+import 'package:integra/features/auth/presentation/sessao_controller.dart';
+
 void main() {
   runApp(
-    DevicePreview(
-      enabled: kDebugMode,
-      builder: (context) => const IntegraApp(),
+    // `ProviderScope` na raiz: é o que permite aos testes substituírem qualquer
+    // dependência por `overrides`, sem servidor e sem keystore.
+    ProviderScope(
+      child: DevicePreview(
+        enabled: kDebugMode,
+        builder: (_) => const IntegraApp(),
+      ),
     ),
   );
 }
 
-class IntegraApp extends StatelessWidget {
+class IntegraApp extends ConsumerStatefulWidget {
   const IntegraApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      locale: DevicePreview.locale(context),
-      builder: DevicePreview.appBuilder,
-      debugShowCheckedModeBanner: false,
-      title: 'Integra',
-      home: const PlaceholderHome(),
-    );
-  }
+  ConsumerState<IntegraApp> createState() => _IntegraAppState();
 }
 
-class PlaceholderHome extends StatelessWidget {
-  const PlaceholderHome({super.key});
+class _IntegraAppState extends ConsumerState<IntegraApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Checa a sessão guardada uma vez, depois do primeiro frame. O roteador
+    // segura na tela de carregamento até isto responder.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(sessaoProvider.notifier).restaurar();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final texto = Theme.of(context).textTheme;
+    final router = ref.watch(routerProvider);
 
-    return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset('assets/logoappintegra.png', height: 96),
-              const SizedBox(height: 24),
-              Text('Integra', style: texto.headlineMedium),
-              const SizedBox(height: 8),
-              Text(
-                'Base limpa. As telas entram no Sprint 2.',
-                style: texto.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+    // `ShadApp.custom` em vez de `ShadApp`: é a forma de usar o `Router` do
+    // go_router junto com o tema do shadcn. O `ShadAppBuilder` no `builder` é o
+    // que injeta o tema abaixo do `MaterialApp`.
+    return ShadApp.custom(
+      themeMode: ThemeMode.system,
+      theme: IntegraTheme.claro(),
+      darkTheme: IntegraTheme.escuro(),
+      appBuilder: (context) => MaterialApp.router(
+        title: 'Integra',
+        debugShowCheckedModeBanner: false,
+        theme: Theme.of(context),
+        routerConfig: router,
+        locale: DevicePreview.locale(context),
+        localizationsDelegates: const [
+          GlobalShadLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        builder: (context, child) => ShadAppBuilder(
+          child: DevicePreview.appBuilder(context, child),
         ),
       ),
     );
