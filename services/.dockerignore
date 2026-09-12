@@ -1,0 +1,15 @@
+# Tudo aqui é enviado ao daemon do Docker antes do build começar. Sem esta lista,
+# o .venv local (centenas de MB) viaja junto a cada build — e pior, poderia
+# sobrescrever o .venv do contêiner com binários compilados para outro SO.
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+**/tests/
+.env
+.env.*
