@@ -16,11 +16,23 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.1'
+          flutter-version: '3.47.4'
           channel: stable
           cache: true
 
       - run: flutter pub get
+
+      # Os arquivos .freezed.dart e .g.dart são versionados, para a CI não
+      # precisar de passo de geração e para o clone já compilar. O risco disso é
+      # commitar código gerado desatualizado: alguém edita um modelo e esquece
+      # de rodar o build_runner. Regenerar e exigir árvore limpa fecha a brecha.
+      - run: dart run build_runner build
+      - name: Código gerado está atualizado?
+        run: |
+          if ! git diff --exit-code --stat; then
+            echo "::error::Código gerado desatualizado. Rode 'dart run build_runner build' em app/ e commite o resultado."
+            exit 1
+          fi
 
       - run: flutter analyze
 

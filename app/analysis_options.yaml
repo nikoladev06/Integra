@@ -1,1 +1,10 @@
 include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    # Acrescentado pelo próprio flutter no upgrade: o analisador não deve varrer
+    # código de plataforma nem artefatos de build.
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
