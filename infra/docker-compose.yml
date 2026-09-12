@@ -13,7 +13,7 @@ name: integra
 
 services:
   traefik:
-    image: traefik:v3.3
+    image: traefik:v3.7  # v3.3 nao fala a API do Docker Engine 29 (min 1.40)
     restart: unless-stopped
     command:
       - --providers.docker=true

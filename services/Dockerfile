@@ -14,7 +14,12 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
 
-WORKDIR /build
+# O MESMO caminho das duas etapas, de propósito. O uv grava o interpretador em
+# caminho absoluto no shebang de cada script do venv (`#!/app/.venv/bin/python`),
+# então um venv construído em /build e copiado para /app fica com todos os
+# scripts apontando para um caminho que não existe mais. O sintoma é enganoso:
+# o shell responde "uvicorn: not found" mesmo com o arquivo presente e executável.
+WORKDIR /app
 
 # Manifestos primeiro, código depois: mexer numa linha de código não invalida a
 # camada de dependências, que é a cara de reconstruir.
@@ -38,7 +43,7 @@ ENV SERVICO=${SERVICO}
 # conseguir execução dentro do contêiner.
 RUN useradd --create-home --uid 10001 integra
 WORKDIR /app
-COPY --from=build --chown=integra:integra /build /app
+COPY --from=build --chown=integra:integra /app /app
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1
@@ -46,5 +51,13 @@ ENV PATH="/app/.venv/bin:${PATH}" \
 USER integra
 EXPOSE 8000
 
-# Forma shell porque ${SERVICO} precisa ser expandido em tempo de execução.
-CMD uvicorn ${SERVICO}_service.main:app --host 0.0.0.0 --port 8000
+# Forma JSON com `exec`, e as duas metades importam.
+#
+# A forma shell (`CMD uvicorn ...`) faz o /bin/sh ser o PID 1, e o sh NÃO
+# repassa SIGTERM ao filho. Resultado: `docker compose restart` ou um deploy
+# novo não avisam o uvicorn, que é morto por SIGKILL 10 s depois — derrubando
+# as requisições em voo a cada atualização. O `exec` troca o shell pelo uvicorn,
+# que então recebe o sinal e desliga com calma.
+#
+# O `sh -c` continua necessário porque ${SERVICO} é expandido em tempo de execução.
+CMD ["sh", "-c", "exec uvicorn ${SERVICO}_service.main:app --host 0.0.0.0 --port 8000"]
