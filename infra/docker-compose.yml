@@ -20,6 +20,11 @@ services:
       # Nada é roteado sem label explícita: um contêiner novo não vaza para a
       # internet só por subir na mesma rede.
       - --providers.docker.exposedByDefault=false
+      # Sem isto o Traefik escolhe ARBITRARIAMENTE uma das redes do contêiner
+      # para alcançá-lo. Como auth e user estão em `borda` e `interna`, e o
+      # Traefik só está em `borda`, a escolha errada rende 504 em silêncio — e
+      # muda entre reinícios, então funciona até não funcionar.
+      - --providers.docker.network=integra_borda
       - --entrypoints.web.address=:80
       - --api.dashboard=true
       - --api.insecure=true # SÓ local; o overlay de produção remove
@@ -48,8 +53,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    # Sem porta publicada: o banco é alcançável só pela rede interna. Expor 5432
-    # no host é como uma instância de desenvolvimento acaba na internet.
+    ports:
+      # Ligado a 127.0.0.1, não a 0.0.0.0. A diferença é o que importa: em
+      # loopback só processos da própria máquina alcançam o banco, o que dá
+      # psql, alembic e testes de integração a partir do host sem abrir o
+      # Postgres para a rede. `0.0.0.0:5432` seria o caminho conhecido de uma
+      # instância de desenvolvimento acabar acessível pela internet.
+      - "127.0.0.1:55432:5432"
     networks: [interna]
 
   auth:
@@ -61,10 +71,16 @@ services:
     environment:
       INTEGRA_AMBIENTE: ${INTEGRA_AMBIENTE:-local}
       INTEGRA_JWT_SECRET: ${INTEGRA_JWT_SECRET}
+      INTEGRA_SERVICO_TOKEN: ${INTEGRA_SERVICO_TOKEN}
+      # Nome do serviço, não o gateway: a chamada interna vai direto pela rede do
+      # compose. Passar pelo Traefik daria uma volta pela borda sem nenhum ganho.
+      INTEGRA_USER_SERVICE_URL: http://user:8000
       INTEGRA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     depends_on:
       postgres:
         condition: service_healthy
+      user:
+        condition: service_started
     labels:
       - traefik.enable=true
       - traefik.http.services.auth.loadbalancer.server.port=8000
@@ -89,6 +105,7 @@ services:
     environment:
       INTEGRA_AMBIENTE: ${INTEGRA_AMBIENTE:-local}
       INTEGRA_JWT_SECRET: ${INTEGRA_JWT_SECRET}
+      INTEGRA_SERVICO_TOKEN: ${INTEGRA_SERVICO_TOKEN}
       INTEGRA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     depends_on:
       postgres:

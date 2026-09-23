@@ -44,6 +44,31 @@ jobs:
     defaults:
       run:
         working-directory: services
+
+    # Postgres de verdade, não SQLite. O projeto usa schemas, pg_trgm, ON CONFLICT
+    # e o tipo UUID nativo — nada disso existe no SQLite, e um teste que passa
+    # contra outro banco testa outra coisa.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: integra
+          POSTGRES_PASSWORD: integra
+          POSTGRES_DB: integra
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U integra -d integra"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      INTEGRA_TEST_DATABASE_URL: postgresql+asyncpg://integra:integra@127.0.0.1:5432/integra
+      INTEGRA_DATABASE_URL: postgresql+asyncpg://integra:integra@127.0.0.1:5432/integra
+      INTEGRA_JWT_SECRET: segredo-de-ci-com-mais-de-32-caracteres
+      INTEGRA_SERVICO_TOKEN: token-de-servico-de-ci-com-32-chars
+
     steps:
       - uses: actions/checkout@v4
 
@@ -60,6 +85,23 @@ jobs:
       - run: uv run ruff check .
 
       - run: uv run ruff format --check .
+
+      # As migrações constroem o schema que os testes de integração usam. Rodar
+      # aqui também prova que elas aplicam numa base vazia — o caminho que a VM
+      # percorre no deploy, e que ninguém exercita rodando local.
+      - name: Migrações e seed
+        run: |
+          (cd user && uv run --project .. alembic upgrade head)
+          (cd auth && uv run --project .. alembic upgrade head)
+          (cd user && uv run --project .. python -m user_service.seed)
+
+      # Guarda de deriva do schema: falha se algum modelo mudou sem migração
+      # correspondente. É o equivalente, no banco, do guarda de contrato — sem
+      # ele o modelo e o schema divergem em silêncio até quebrar em produção.
+      - name: Migrações cobrem os modelos?
+        run: |
+          (cd user && uv run --project .. alembic check)
+          (cd auth && uv run --project .. alembic check)
 
       # Inclui test_contratos.py, que falha se algum serviço expuser rota fora
       # de contracts/.

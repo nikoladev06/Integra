@@ -1,25 +1,19 @@
-"""auth-service — identidade e sessão.
+"""auth-service — identidade e sessão."""
 
-Sprint 1 entrega só o esqueleto e o `/health`. As rotas de
-`contracts/auth.openapi.yaml` são implementadas na Sprint 3.
-"""
-
-from integra_shared import criar_app, obter_settings
-from integra_shared.db import criar_engine, ping
-
-settings = obter_settings()
-
-_engine = criar_engine(settings.database_url) if settings.database_url else None
+from auth_service.api import rotas
+from auth_service.database import engine
+from auth_service.settings import settings
+from integra_shared import criar_app
+from integra_shared.db import ping
 
 
 async def _banco_responde() -> bool:
-    if _engine is None:
-        return True
-    return await ping(_engine)
+    return await ping(engine)
 
 
 app = criar_app(
     "auth-service",
-    verificacoes={"database": _banco_responde} if _engine else {},
+    verificacoes={"database": _banco_responde},
     settings=settings,
 )
+app.include_router(rotas.router)
