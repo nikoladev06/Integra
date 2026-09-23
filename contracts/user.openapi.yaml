@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Integra — user-service
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Perfil, tipo de conta e vínculo institucional.
 
@@ -22,6 +22,10 @@ tags:
   - name: perfil
   - name: busca
   - name: instituições
+  - name: seguir
+    description: |
+      O grafo de seguidores. Mora aqui, e não nos serviços de feed, porque quem
+      segue quem é atributo do usuário — e os dois feeds consultam a mesma lista.
   - name: arquivos
 
 paths:
@@ -240,6 +244,138 @@ paths:
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /users/me/seguindo/universidades:
+    get:
+      tags: [seguir]
+      summary: Universidades que o usuário segue
+      operationId: listarUniversidadesSeguidas
+      description: |
+        Alimenta o seletor de escopo do feed acadêmico.
+
+        **A universidade da própria afiliação sempre consta**, mesmo que nunca
+        tenha sido seguida explicitamente: ela não é opcional, e deixá-la de
+        fora faria o escopo "geral" excluir justamente a instituição do aluno.
+        Ela vem com `propria: true` para o cliente não oferecer "deixar de
+        seguir" nela.
+      responses:
+        '200':
+          description: Universidades seguidas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/UniversidadeSeguida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  /users/me/seguindo/universidades/{universidadeId}:
+    put:
+      tags: [seguir]
+      summary: Passa a seguir uma universidade
+      operationId: seguirUniversidade
+      description: |
+        Idempotente: seguir de novo responde `204` sem erro.
+
+        **Seguir não concede acesso a conteúdo restrito.** Quem segue uma
+        instituição sem ter vínculo com ela passa a ver apenas os posts de
+        visibilidade `publico`. Os `institucional` e `curso` continuam exigindo
+        afiliação — caso contrário seguir seria um botão de escalar privilégio.
+      parameters:
+        - name: universidadeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Passou a seguir }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404':
+          description: Universidade não encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    delete:
+      tags: [seguir]
+      summary: Deixa de seguir uma universidade
+      operationId: deixarDeSeguirUniversidade
+      parameters:
+        - name: universidadeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Deixou de seguir (idempotente) }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '409':
+          description: |
+            Tentativa de deixar de seguir a própria universidade. O vínculo não
+            é uma escolha de feed: sair dele seria perder os comunicados que a
+            instituição dirige ao aluno.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                code: universidade_propria
+                message: 'Você não pode deixar de seguir sua própria universidade'
+
+  /users/me/seguindo/usuarios:
+    get:
+      tags: [seguir]
+      summary: Pessoas e empresas que o usuário segue
+      operationId: listarUsuariosSeguidos
+      description: |
+        Sustenta o escopo "somente seguidos" do feed profissional.
+      parameters:
+        - name: tipo
+          in: query
+          schema: { $ref: '#/components/schemas/TipoConta' }
+          description: Filtra por tipo de conta — só empresas, por exemplo.
+      responses:
+        '200':
+          description: Contas seguidas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PerfilPublico' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  /users/me/seguindo/usuarios/{userId}:
+    put:
+      tags: [seguir]
+      summary: Passa a seguir uma pessoa ou empresa
+      operationId: seguirUsuario
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Passou a seguir (idempotente) }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404':
+          description: Usuário não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Tentativa de seguir a si mesmo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    delete:
+      tags: [seguir]
+      summary: Deixa de seguir uma pessoa ou empresa
+      operationId: deixarDeSeguirUsuario
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Deixou de seguir (idempotente) }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
   /health:
     get:
       summary: Liveness e readiness
@@ -289,6 +425,20 @@ components:
         id: { type: string, format: uuid }
         nome: { type: string, examples: ['Faculdade de Tecnologia de Ribeirão Preto'] }
         sigla: { type: string, examples: ['FATEC RP'] }
+
+    UniversidadeSeguida:
+      allOf:
+        - $ref: '#/components/schemas/Universidade'
+        - type: object
+          required: [propria]
+          properties:
+            propria:
+              type: boolean
+              description: |
+                `true` para a universidade da afiliação do usuário. Ela sempre
+                aparece na lista e não pode ser removida — o cliente esconde a
+                ação de deixar de seguir quando este campo é verdadeiro.
+            seguidaEm: { type: [string, 'null'], format: date-time }
 
     Curso:
       type: object

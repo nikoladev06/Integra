@@ -41,7 +41,7 @@ void main() {
       // navegar à mão. No protótipo não havia guarda: dava para alcançar a tela
       // principal sem sessão.
       expect(find.widgetWithText(ShadButton, 'Entrar'), findsOne);
-      expect(find.text('Acadêmico'), findsNothing);
+      expect(find.byTooltip('Acadêmico'), findsNothing);
     });
 
     testWidgets('e-mail inválido para antes de chamar o repositório', (
@@ -57,7 +57,7 @@ void main() {
         find.text('Insira um e-mail válido (ex: usuario@exemplo.com)'),
         findsOne,
       );
-      expect(find.text('Acadêmico'), findsNothing);
+      expect(find.byTooltip('Acadêmico'), findsNothing);
     });
 
     testWidgets('senha curta mostra a mensagem do domínio', (tester) async {
@@ -92,9 +92,12 @@ void main() {
         senha: Fixtures.senhaDemo,
       );
 
-      expect(find.text('Acadêmico'), findsWidgets);
-      expect(find.text('Profissional'), findsWidgets);
-      expect(find.text('Perfil'), findsWidgets);
+      // As abas passaram a ser só ícone. O nome continua no widget — como
+      // tooltip e rótulo semântico — e é por ele que o teste as encontra,
+      // que é também como um leitor de tela as encontraria.
+      expect(find.byTooltip('Acadêmico'), findsOne);
+      expect(find.byTooltip('Profissional'), findsOne);
+      expect(find.byTooltip('Perfil'), findsOne);
     });
 
     testWidgets('a credencial de exemplo aparece no modo de fixtures', (
@@ -117,7 +120,7 @@ void main() {
         ),
       );
 
-      expect(find.text('Acadêmico'), findsWidgets);
+      expect(find.byTooltip('Acadêmico'), findsOne);
       expect(find.widgetWithText(ShadButton, 'Entrar'), findsNothing);
     });
 
@@ -131,7 +134,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Perfil').last);
+      await tester.tap(find.byTooltip('Perfil'));
       await tester.pumpAndSettle();
 
       // O perfil veio do repositório, atravessando sessão → repositório →

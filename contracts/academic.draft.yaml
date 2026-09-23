@@ -1,41 +1,96 @@
 # RASCUNHO — fechado na Sprint 4. Não implementar contra este arquivo.
-# Serve para: (a) reservar os nomes de recurso agora, (b) revelar cedo o que o
-# núcleo precisa expor. A regra de visibilidade abaixo é a razão de o serviço existir.
+#
+# REVISADO após a orientação de front de 19/09/2026: alunos passam a seguir
+# universidades além da própria, e o feed ganha um seletor de escopo.
 openapi: 3.1.0
 info:
   title: Integra — academic-service (RASCUNHO)
-  version: 0.1.0-draft
+  version: 0.2.0-draft
   description: |
-    Posts institucionais publicados por contas do tipo `faculdade`, gerais ou
-    restritos a um curso, com curtidas e comentários dos alunos afiliados.
+    Posts institucionais publicados por contas do tipo `faculdade`, com três
+    níveis de visibilidade, e curtidas e comentários dos alunos que podem vê-los.
 
-    DECISÃO ESTRUTURAL: a visibilidade é resolvida no serviço, na consulta.
-    O cliente nunca recebe um post que não deveria ver e depois filtra — isso
-    transformaria o filtro numa decoração de UI, contornável por qualquer um
-    lendo a resposta da API.
+    REGRA DE SEGURANÇA CENTRAL — seguir NÃO concede acesso a conteúdo restrito.
+    Um aluno vê, de cada universidade:
+
+      da PRÓPRIA (tem afiliação)      publico        ve
+                                      institucional  ve
+                                      curso == o seu ve
+                                      curso != o seu NAO ve
+
+      de uma SEGUIDA (sem vínculo)    publico        ve
+                                      institucional  NAO ve
+                                      curso          NAO ve
+
+    Sem essa assimetria, seguir vira um botão de escalar privilégio: qualquer
+    pessoa segue uma instituição e lê os comunicados internos dela.
+
+    A visibilidade é resolvida NO SERVIÇO, na consulta. O cliente nunca recebe
+    um post que não deveria ver e depois filtra — isso transformaria a regra
+    numa decoração de UI, contornável por quem ler a resposta da API.
 
 paths:
   /academic/posts:
     get:
       summary: Feed institucional do aluno autenticado
       description: |
-        Retorna posts da universidade do aluno que sejam gerais OU restritos ao
-        curso dele. Sem parâmetro de universidade: ela vem do JWT, não da query —
-        um parâmetro deixaria o aluno pedir o feed de outra instituição.
+        O parâmetro `escopo` corresponde ao seletor no topo da tela:
+
+          geral  (padrão)  a própria universidade + todas as seguidas
+          minha            só a própria universidade
+
+        `escopo` escolhe QUAIS universidades entram, nunca QUAL conteúdo: a
+        matriz de visibilidade acima vale igual nos dois casos. Não existe
+        parâmetro de universidade arbitrária — o conjunto sai da afiliação e da
+        lista de seguidas do próprio token, e não do que o cliente pedir.
+      parameters:
+        - name: escopo
+          in: query
+          schema: { type: string, enum: [geral, minha], default: geral }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
     post:
       summary: Publica um post institucional
-      description: Exige `tipo == faculdade` no token. Aluno recebe 403.
+      description: |
+        Exige `tipo == faculdade` no token; aluno recebe 403. A universidade do
+        post é a do autor — não é um campo do corpo.
+
+        `visibilidade` é obrigatória e SEM valor padrão no servidor: o formulário
+        do cliente pré-seleciona `institucional`, mas o serviço não adivinha.
+        Um default do lado do servidor faria uma chamada malformada publicar com
+        alcance que ninguém escolheu.
   /academic/posts/{postId}:
-    get: { summary: Detalhe de um post }
-    delete: { summary: Remove um post (só o autor) }
+    get: { summary: Detalhe de um post, sujeito à mesma matriz de visibilidade }
+    delete: { summary: Remove um post (só a faculdade autora) }
   /academic/posts/{postId}/curtidas:
     put: { summary: Curte (idempotente) }
     delete: { summary: Descurte }
   /academic/posts/{postId}/comentarios:
     get: { summary: Lista comentários }
-    post: { summary: Comenta }
+    post:
+      summary: Comenta
+      description: |
+        Só quem pode VER o post pode comentar. Vale dizer explícito porque é o
+        erro clássico: checar visibilidade na leitura e esquecer na escrita.
+
+components:
+  schemas:
+    Visibilidade:
+      type: string
+      enum: [publico, institucional, curso]
+      description: |
+        publico        qualquer usuário, inclusive de outra instituição que siga
+        institucional  apenas alunos com afiliação a esta universidade
+        curso          apenas alunos afiliados a um curso específico dela
 
 # EM ABERTO PARA A SPRINT 4
 # - "turma" existe como entidade, ou restrição por curso basta?
 # - post restrito a MAIS DE UM curso, ou só um?
 # - faculdade edita post publicado, ou só apaga?
+# - um post `publico` aparece para quem NAO segue a universidade? (busca,
+#   descoberta) Hoje o escopo do feed diz que não; falta decidir se existe
+#   alguma tela de descoberta onde ele apareça.

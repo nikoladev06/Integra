@@ -1,23 +1,50 @@
 # RASCUNHO — fechado na Sprint 5.
+#
+# REVISADO após a orientação de front de 19/09/2026: o feed ganha seletor de
+# escopo, com o mesmo componente do feed acadêmico.
 openapi: 3.1.0
 info:
   title: Integra — feed-service (RASCUNHO)
-  version: 0.1.0-draft
+  version: 0.2.0-draft
   description: |
-    Feed profissional entre alunos, no espírito do `ProfessionalPost` do protótipo.
+    Feed profissional entre alunos e empresas, no espírito do `ProfessionalPost`
+    do protótipo.
 
     DUAS CORREÇÕES em relação ao protótipo, ambas herdadas do Firestore:
     1. `isLiked` NÃO é campo do post. Era, e por isso a curtida de um usuário
        aparecia para todos. É estado por usuário, resolvido na consulta.
     2. Nada de denormalizar `nomeCompleto`/`username` dentro do post. O autor vem
-       por JOIN com o user-service; a cópia envelhece no instante em que o usuário
-       troca de nome.
+       por JOIN com o user-service; a cópia envelhece no instante em que o
+       usuário troca de nome.
+
+    DIFERENÇA EM RELAÇÃO AO ACADÊMICO: aqui não há matriz de visibilidade. Todo
+    post profissional é visível a qualquer usuário autenticado — o escopo muda
+    apenas o que é MOSTRADO por padrão, não o que é permitido. É por isso que
+    "geral" pode incluir quem o usuário não segue, o que no acadêmico seria
+    vazamento.
 
 paths:
   /feed/posts:
     get:
       summary: Feed profissional
-      description: Paginação por cursor, nunca por offset — o feed cresce pela cabeça.
+      description: |
+        O parâmetro `escopo` corresponde ao seletor no topo da tela:
+
+          geral     (padrão)  seguidos + recomendados de quem ele não segue
+          seguindo            só quem ele segue (pessoas e empresas)
+
+        Paginação por cursor, nunca por offset — o feed cresce pela cabeça, e
+        offset duplica ou pula itens quando algo novo entra durante a rolagem.
+      parameters:
+        - name: escopo
+          in: query
+          schema: { type: string, enum: [geral, seguindo], default: geral }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
     post: { summary: Publica }
   /feed/posts/{postId}:
     get: { summary: Detalhe }
@@ -30,6 +57,19 @@ paths:
     get: { summary: Lista comentários }
     post: { summary: Comenta }
 
+components:
+  schemas:
+    OrigemNoFeed:
+      type: string
+      enum: [seguindo, recomendado]
+      description: |
+        Por que este post está no feed. O cliente marca visualmente os
+        `recomendado`, senão o usuário não entende por que vê alguém que não
+        segue — e a reação costuma ser desconfiança, não descoberta.
+
 # EM ABERTO PARA A SPRINT 5
-# - o feed é global ou limitado à universidade do aluno?
+# - o que alimenta "recomendado"? (mesma universidade? mesmo curso? empresas com
+#   vaga aberta para o curso dele?) Na Sprint 5, o mais simples que funcione.
 # - imagem no post: mesmo fluxo de URL pré-assinada do avatar?
+# - "seguindo" vazio na conta nova: o que a tela mostra? Provavelmente cai para
+#   recomendados com um aviso, senão o feed nasce vazio e o app parece quebrado.
