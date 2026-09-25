@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'package:integra/core/theme/tokens.dart';
+import 'package:integra/shared/widgets/cabecalho_integra.dart';
 import 'package:integra/shared/widgets/estado_vazio.dart';
 
 /// Pilar Profissional — feed entre alunos e área de vagas.
@@ -14,11 +15,7 @@ class ProfissionalScreen extends ConsumerWidget {
     final cores = ShadTheme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profissional'),
-        backgroundColor: cores.card,
-        surfaceTintColor: Colors.transparent,
-      ),
+      appBar: const CabecalhoIntegra(titulo: 'Profissional'),
       body: EstadoVazio(
         icone: LucideIcons.briefcase,
         cor: cores.profissional,

@@ -10,6 +10,8 @@
 /// português — a assinatura que `TextFormField.validator` espera.
 library;
 
+import 'package:integra/shared/domain/documentos.dart';
+
 /// Comprimento mínimo de senha aceito no cadastro e na troca de senha.
 const int senhaComprimentoMinimo = 6;
 
@@ -83,19 +85,60 @@ String? validarTelefone(String? telefone) {
   return null;
 }
 
-/// No protótipo, universidade e curso eram texto livre. Na arquitetura nova são
-/// seleções de `universidades` e `cursos` servidas pelo `user-service`, e a
-/// validação passa a ser sobre o identificador escolhido.
-String? validarUniversidadeSelecionada(String? universidadeId) {
-  if (universidadeId == null || universidadeId.isEmpty) {
-    return 'Universidade é obrigatória';
-  }
+/// Formação declarada no cadastro: **os dois campos juntos, ou nenhum deles**.
+///
+/// Mudou de forma na v2. Na v1 universidade e curso eram obrigatórios e a
+/// seleção virava a afiliação que concedia acesso aos posts internos da
+/// instituição — declarar bastava. Agora declarar é cosmético, como no
+/// LinkedIn, e quem concede acesso é o vínculo, que nasce do CPF conferido
+/// contra a lista da faculdade.
+///
+/// O que sobrou de regra é só a coerência do par: o `auth-service` recusa
+/// universidade sem curso com o mesmo critério (`CadastroIn._formacao_completa_ou_ausente`),
+/// porque meia formação é uma linha de currículo que nenhuma tela sabe exibir.
+/// A tela encadeia os dois combobox — escolher a universidade habilita o de
+/// cursos — então só um preenchido significa que o usuário parou no meio.
+String? validarFormacaoDeclarada({String? universidadeId, String? cursoId}) {
+  final temUniversidade = universidadeId != null && universidadeId.isNotEmpty;
+  final temCurso = cursoId != null && cursoId.isNotEmpty;
+
+  if (temUniversidade && !temCurso) return 'Escolha também o curso';
+  if (temCurso && !temUniversidade) return 'Escolha também a universidade';
   return null;
 }
 
-String? validarCursoSelecionado(String? cursoId) {
-  if (cursoId == null || cursoId.isEmpty) {
-    return 'Curso é obrigatório';
-  }
+/// CPF do cadastro de aluno. Obrigatório desde a v2.
+///
+/// É a chave que liga a conta às matrículas que as faculdades cadastram, e por
+/// isso não é editável depois: trocar o próprio CPF pelo de outra pessoa
+/// permitiria assumir a matrícula dela.
+///
+/// A mensagem é a mesma para todos os casos de recusa, porque para quem digitou
+/// a ação é sempre "confira o número" — e é a mesma string que o `auth-service`
+/// devolve em `fields.cpf`.
+String? validarCpf(String? cpf) {
+  final valor = cpf?.trim() ?? '';
+  if (valor.isEmpty) return 'CPF é obrigatório';
+  if (!cpfEValido(valor)) return 'CPF inválido';
+  return null;
+}
+
+/// CNPJ do cadastro institucional. Obrigatório, e único por conta.
+///
+/// Validar os dígitos recusa número digitado errado — **não** prova que quem
+/// digitou representa aquela organização. É por isso que a conta institucional
+/// nasce pendente de ativação, e não porque o número possa ser falso.
+String? validarCnpj(String? cnpj) {
+  final valor = cnpj?.trim() ?? '';
+  if (valor.isEmpty) return 'CNPJ é obrigatório';
+  if (!cnpjEValido(valor)) return 'CNPJ inválido';
+  return null;
+}
+
+/// Nome da instituição, como aparecerá no perfil.
+String? validarNomeDaInstituicao(String? nome) {
+  final valor = nome?.trim() ?? '';
+  if (valor.length < 2) return 'Informe o nome da instituição';
+  if (valor.length > 200) return 'Nome muito longo (máximo 200 caracteres)';
   return null;
 }

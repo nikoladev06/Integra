@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'package:integra/core/config/ambiente.dart';
 import 'package:integra/core/error/failure.dart';
+import 'package:integra/core/router/app_router.dart';
 import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/features/auth/domain/auth_validators.dart';
 import 'package:integra/features/auth/presentation/sessao_controller.dart';
 import 'package:integra/features/profile/data/fixtures.dart';
+import 'package:integra/shared/domain/documentos.dart';
 
 /// Entrada no app.
 ///
@@ -60,6 +63,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final sessao = ref.watch(sessaoProvider);
     final motivo = sessao is SessaoAusente ? sessao.motivo : null;
 
+    // Recado de quem acabou de se cadastrar. Vem no `extra` da navegação em vez
+    // de num provider: é um aviso de uma passagem só, e guardá-lo em estado
+    // faria ele reaparecer no próximo logout.
+    final recado = GoRouterState.of(context).extra as String?;
+
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -81,6 +89,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       style: tema.textTheme.muted,
                     ),
                     const SizedBox(height: Espaco.lg),
+
+                    if (recado != null) ...[
+                      ShadAlert(
+                        icon: const Icon(LucideIcons.circleCheck),
+                        description: Text(recado),
+                      ),
+                      const SizedBox(height: Espaco.md),
+                    ],
 
                     if (motivo != null) ...[
                       ShadAlert(
@@ -135,7 +151,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           : const Text('Entrar'),
                     ),
 
-                    const SizedBox(height: Espaco.lg),
+                    const SizedBox(height: Espaco.sm),
+                    ShadButton.link(
+                      onPressed: () => context.push(Rotas.cadastro),
+                      child: const Text('Criar conta'),
+                    ),
+
+                    const SizedBox(height: Espaco.md),
                     // A recuperação de senha saiu do escopo, e a tela diz isso
                     // em vez de oferecer um link que não leva a nada.
                     Text(
@@ -180,8 +202,12 @@ class _AvisoDeFixtures extends StatelessWidget {
             Text('Modo de demonstração', style: tema.textTheme.small),
             const SizedBox(height: Espaco.xs),
             Text(
-              'Sem backend conectado. Entre com:\n'
-              '${Fixtures.emailDemo}\n${Fixtures.senhaDemo}',
+              'Sem backend conectado. Duas contas de exemplo, senha '
+              '${Fixtures.senhaDemo} nas duas:\n\n'
+              '${Fixtures.emailDemo} — com vínculo e formação verificada.\n\n'
+              '${Fixtures.emailSemVinculo} — formação declarada, sem vínculo. '
+              'Busque a FATEC RP e informe o CPF '
+              '${formatarCpf(Fixtures.cpfBruno)} para ver o selo nascer.',
               style: tema.textTheme.muted,
             ),
           ],

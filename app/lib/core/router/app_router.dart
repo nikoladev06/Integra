@@ -3,10 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:integra/features/academic/presentation/academico_screen.dart';
+import 'package:integra/features/auth/presentation/cadastro_instituicao_screen.dart';
+import 'package:integra/features/auth/presentation/cadastro_screen.dart';
 import 'package:integra/features/auth/presentation/login_screen.dart';
 import 'package:integra/features/auth/presentation/sessao_controller.dart';
+import 'package:integra/features/institution/presentation/perfil_de_universidade_screen.dart';
 import 'package:integra/features/professional/presentation/profissional_screen.dart';
+import 'package:integra/features/profile/data/models/perfil.dart';
+import 'package:integra/features/profile/presentation/editar_perfil_screen.dart';
 import 'package:integra/features/profile/presentation/perfil_screen.dart';
+import 'package:integra/features/profile/presentation/trocar_senha_screen.dart';
+import 'package:integra/features/search/presentation/busca_screen.dart';
 import 'package:integra/shared/widgets/app_shell.dart';
 import 'package:integra/shared/widgets/carregando_screen.dart';
 
@@ -16,9 +23,32 @@ import 'package:integra/shared/widgets/carregando_screen.dart';
 abstract final class Rotas {
   static const carregando = '/carregando';
   static const login = '/login';
+  static const cadastro = '/cadastro';
+  static const cadastroDeFaculdade = '/cadastro/faculdade';
+  static const cadastroDeEmpresa = '/cadastro/empresa';
+
   static const academico = '/academico';
   static const profissional = '/profissional';
   static const perfil = '/perfil';
+  static const editarPerfil = '/perfil/editar';
+  static const trocarSenha = '/perfil/senha';
+
+  static const busca = '/busca';
+  static const universidades = '/universidades';
+
+  static String universidade(String id) => '$universidades/$id';
+
+  /// As telas alcançáveis **sem** sessão. Fora desta lista, tudo exige login.
+  ///
+  /// Uma lista de permissão, e não de bloqueio: a rota nova que alguém esquecer
+  /// de classificar fica protegida por omissão, que é o erro barato. O contrário
+  /// deixaria a tela nova aberta sem ninguém notar.
+  static const semSessao = {
+    login,
+    cadastro,
+    cadastroDeFaculdade,
+    cadastroDeEmpresa,
+  };
 }
 
 /// Ponte entre o Riverpod e o `refreshListenable` do go_router, que só entende
@@ -46,6 +76,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, estadoDaRota) {
       final sessao = ref.read(sessaoProvider);
       final destino = estadoDaRota.matchedLocation;
+      final aberta = Rotas.semSessao.contains(destino);
 
       return switch (sessao) {
         // Ainda checando o token guardado: segura na tela de carregamento para
@@ -53,14 +84,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         SessaoVerificando() =>
           destino == Rotas.carregando ? null : Rotas.carregando,
 
-        // Sem sessão: só o login é alcançável.
-        SessaoAusente() => destino == Rotas.login ? null : Rotas.login,
+        // Sem sessão: só login e os cadastros são alcançáveis.
+        SessaoAusente() => aberta ? null : Rotas.login,
 
-        // Com sessão: login e carregamento não fazem mais sentido.
-        SessaoAtiva() =>
-          destino == Rotas.login || destino == Rotas.carregando
-              ? Rotas.academico
-              : null,
+        // Com sessão: login, cadastro e carregamento não fazem mais sentido.
+        SessaoAtiva() => aberta || destino == Rotas.carregando
+            ? Rotas.academico
+            : null,
       };
     },
 
@@ -70,6 +100,40 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, _) => const CarregandoScreen(),
       ),
       GoRoute(path: Rotas.login, builder: (_, _) => const LoginScreen()),
+      GoRoute(path: Rotas.cadastro, builder: (_, _) => const CadastroScreen()),
+
+      // Uma tela por tipo, e não uma com parâmetro na URL: o `tipo` decide o que
+      // o formulário pede e o que o aviso promete, e um valor inesperado na URL
+      // não deveria conseguir produzir uma tela meio faculdade meio empresa.
+      GoRoute(
+        path: Rotas.cadastroDeFaculdade,
+        builder: (_, _) =>
+            const CadastroInstituicaoScreen(tipo: TipoConta.faculdade),
+      ),
+      GoRoute(
+        path: Rotas.cadastroDeEmpresa,
+        builder: (_, _) =>
+            const CadastroInstituicaoScreen(tipo: TipoConta.empresa),
+      ),
+
+      // Fora do shell, e por isso empilhadas por cima dele: são destinos de ida
+      // e volta, alcançáveis de qualquer aba, e manter a barra inferior num
+      // formulário convida a sair dele pela metade.
+      GoRoute(
+        path: Rotas.editarPerfil,
+        builder: (_, _) => const EditarPerfilScreen(),
+      ),
+      GoRoute(
+        path: Rotas.trocarSenha,
+        builder: (_, _) => const TrocarSenhaScreen(),
+      ),
+      GoRoute(path: Rotas.busca, builder: (_, _) => const BuscaScreen()),
+      GoRoute(
+        path: '${Rotas.universidades}/:id',
+        builder: (_, estado) => PerfilDeUniversidadeScreen(
+          universidadeId: estado.pathParameters['id']!,
+        ),
+      ),
 
       // Uma pilha de navegação por aba: entrar num perfil pelo feed e trocar de
       // aba preserva as duas posições, em vez de resetar a que saiu.
