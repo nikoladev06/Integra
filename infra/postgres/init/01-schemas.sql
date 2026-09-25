@@ -11,6 +11,11 @@ CREATE SCHEMA IF NOT EXISTS feed;
 CREATE SCHEMA IF NOT EXISTS jobs;
 
 -- Busca de usuários por username e nome usa ILIKE com índice trigram
--- (contracts/user.openapi.yaml, GET /users). A extensão precisa existir antes
--- da migração que cria o índice, na Sprint 3.
+-- (contracts/user.openapi.yaml, GET /users).
+--
+-- A migração inicial do user-service também cria a extensão, e é ela que manda:
+-- este arquivo só roda na criação do volume do compose, então uma base nova em
+-- qualquer outro lugar — o serviço postgres da CI, a VM no primeiro deploy —
+-- nunca o vê. A linha fica por conveniência em desenvolvimento; apagá-la não
+-- quebra nada, apagar a da migração quebra tudo.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;

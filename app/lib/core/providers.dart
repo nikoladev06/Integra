@@ -7,14 +7,16 @@ import 'package:integra/features/auth/data/api_auth_repository.dart';
 import 'package:integra/features/auth/data/auth_repository.dart';
 import 'package:integra/features/auth/data/fake_auth_repository.dart';
 import 'package:integra/features/profile/data/api_profile_repository.dart';
+import 'package:integra/features/profile/data/banco_falso.dart';
+import 'package:integra/features/profile/data/fake_profile_repository.dart';
 import 'package:integra/features/profile/data/profile_repository.dart';
 
 /// A injeção de dependência do app.
 ///
 /// **É aqui que a troca de que o plano fala acontece.** Cada repositório escolhe
 /// entre a implementação falsa e a de API olhando uma única condição, e nenhuma
-/// tela sabe qual está no ar. Quando o `auth-service` subir, o que muda é o
-/// valor de `API_BASE_URL` na linha de comando — não o código.
+/// tela sabe qual está no ar. Quando os serviços sobem, o que muda é o valor de
+/// `API_BASE_URL` na linha de comando — não o código.
 ///
 /// Nos testes, estes providers são substituídos por `overrides` no
 /// `ProviderScope`, que é o que torna teste de widget possível sem servidor e
@@ -40,12 +42,23 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   );
 });
 
+/// O estado que os dois repositórios falsos compartilham.
+///
+/// Um provider, e não um singleton: cada `ProviderScope` tem o seu, então um
+/// teste nunca vê o usuário que outro cadastrou. Só existe no modo de fixtures —
+/// com a API no ar, quem guarda estado é o Postgres.
+final bancoFalsoProvider = Provider<BancoFalso>((ref) => BancoFalso());
+
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  if (Ambiente.usarFalsos) return FakeAuthRepository();
+  if (Ambiente.usarFalsos) {
+    return FakeAuthRepository(ref.watch(bancoFalsoProvider));
+  }
   return ApiAuthRepository(ref.watch(apiClientProvider));
 });
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
-  if (Ambiente.usarFalsos) return FakeProfileRepository();
+  if (Ambiente.usarFalsos) {
+    return FakeProfileRepository(ref.watch(bancoFalsoProvider));
+  }
   return ApiProfileRepository(ref.watch(apiClientProvider));
 });

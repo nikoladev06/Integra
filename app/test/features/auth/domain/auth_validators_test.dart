@@ -122,15 +122,81 @@ void main() {
     });
   });
 
-  group('afiliação', () {
-    test('exige universidade e curso selecionados', () {
-      expect(validarUniversidadeSelecionada(null), 'Universidade é obrigatória');
-      expect(validarUniversidadeSelecionada(''), 'Universidade é obrigatória');
-      expect(validarUniversidadeSelecionada('uni-1'), isNull);
+  group('validarFormacaoDeclarada', () {
+    test('nenhum dos dois é válido: declarar formação é opcional na v2', () {
+      // Na v1 os dois eram obrigatórios e a seleção concedia acesso aos posts
+      // internos da instituição. Agora declarar é cosmético, e exigir no
+      // cadastro só fazia todo mundo escolher a primeira faculdade da lista.
+      expect(validarFormacaoDeclarada(), isNull);
+      expect(
+        validarFormacaoDeclarada(universidadeId: '', cursoId: ''),
+        isNull,
+      );
+    });
 
-      expect(validarCursoSelecionado(null), 'Curso é obrigatório');
-      expect(validarCursoSelecionado(''), 'Curso é obrigatório');
-      expect(validarCursoSelecionado('curso-1'), isNull);
+    test('os dois juntos é válido', () {
+      expect(
+        validarFormacaoDeclarada(universidadeId: 'uni-1', cursoId: 'curso-1'),
+        isNull,
+      );
+    });
+
+    test('só um dos dois é recusado', () {
+      // Meia formação é uma linha de currículo que nenhuma tela sabe exibir, e
+      // o `auth-service` recusa pelo mesmo critério.
+      expect(
+        validarFormacaoDeclarada(universidadeId: 'uni-1'),
+        'Escolha também o curso',
+      );
+      expect(
+        validarFormacaoDeclarada(cursoId: 'curso-1'),
+        'Escolha também a universidade',
+      );
+    });
+  });
+
+  group('validarCpf', () {
+    test('aceita válido, com e sem pontuação', () {
+      expect(validarCpf('39046350851'), isNull);
+      expect(validarCpf('390.463.508-51'), isNull);
+    });
+
+    test('recusa vazio com mensagem própria', () {
+      // "Obrigatório" e "inválido" são coisas diferentes para quem preenche:
+      // uma diz que faltou, a outra que está errado.
+      expect(validarCpf(''), 'CPF é obrigatório');
+      expect(validarCpf(null), 'CPF é obrigatório');
+    });
+
+    test('recusa inválido com a mesma mensagem do serviço', () {
+      expect(validarCpf('39046350852'), 'CPF inválido');
+      expect(validarCpf('11111111111'), 'CPF inválido');
+    });
+  });
+
+  group('validarCnpj', () {
+    test('aceita válido, com e sem pontuação', () {
+      expect(validarCnpj('46395000000139'), isNull);
+      expect(validarCnpj('46.395.000/0001-39'), isNull);
+    });
+
+    test('recusa vazio e inválido', () {
+      expect(validarCnpj(''), 'CNPJ é obrigatório');
+      expect(validarCnpj('46395000000138'), 'CNPJ inválido');
+    });
+  });
+
+  group('validarNomeDaInstituicao', () {
+    test('aceita nome plausível', () {
+      expect(validarNomeDaInstituicao('Faculdade de Tecnologia'), isNull);
+    });
+
+    test('recusa vazio e nome longo demais', () {
+      expect(validarNomeDaInstituicao(''), 'Informe o nome da instituição');
+      expect(
+        validarNomeDaInstituicao('a' * 201),
+        'Nome muito longo (máximo 200 caracteres)',
+      );
     });
   });
 }

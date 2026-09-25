@@ -72,6 +72,13 @@ class ApiClient {
     await _executar(() => _dio.put<dynamic>(caminho, data: corpo));
   }
 
+  /// `DELETE`. As rotas de remoção do contrato respondem `204` sem corpo, então
+  /// não há o que devolver — e um retorno vazio é mais honesto que um mapa vazio
+  /// que ninguém lê.
+  Future<void> delete(String caminho) async {
+    await _executar(() => _dio.delete<dynamic>(caminho));
+  }
+
   Future<void> postSemCorpo(String caminho, {Object? corpo}) async {
     await _executar(() => _dio.post<dynamic>(caminho, data: corpo));
   }

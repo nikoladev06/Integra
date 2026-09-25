@@ -1,17 +1,14 @@
 import 'package:integra/core/network/api_client.dart';
 import 'package:integra/features/auth/data/auth_repository.dart';
 import 'package:integra/features/auth/data/models/par_de_tokens.dart';
+import 'package:integra/features/profile/data/models/perfil.dart';
+import 'package:integra/shared/domain/documentos.dart';
 
 /// [AuthRepository] contra o `auth-service` real.
 ///
-/// **Esta classe é a troca de uma linha do plano.** Ela existe desde já, com os
-/// caminhos exatamente como `contracts/auth.openapi.yaml` declara, mesmo antes
-/// de o serviço implementar as rotas — o que o guarda de contrato em
-/// `services/shared/tests/test_contratos.py` lista como pendente é exatamente
-/// o que falta para ela funcionar.
-///
-/// Escrever isto agora, e não na Sprint 3, é o que garante que a interface foi
-/// desenhada para uma API HTTP de verdade, e não só para o que o falso faz.
+/// Os caminhos são exatamente os de `contracts/auth.openapi.yaml`, e o guarda de
+/// deriva em `services/shared/tests/test_contratos.py` reprova a CI se o serviço
+/// expuser algo que o contrato não declara.
 class ApiAuthRepository implements AuthRepository {
   ApiAuthRepository(this._api);
 
@@ -24,8 +21,9 @@ class ApiAuthRepository implements AuthRepository {
     required String username,
     required String senha,
     required String telefone,
-    required String universidadeId,
-    required String cursoId,
+    required String cpf,
+    String? universidadeId,
+    String? cursoId,
   }) => _api.postSemCorpo(
     '/auth/register',
     corpo: {
@@ -34,10 +32,47 @@ class ApiAuthRepository implements AuthRepository {
       'username': username,
       'senha': senha,
       'telefone': telefone,
-      'universidadeId': universidadeId,
-      'cursoId': cursoId,
+      // Normalizado aqui, e não só no servidor: o campo aceita pontuação para
+      // quem digita, mas o que trafega é o que o banco guarda.
+      'cpf': normalizarCpf(cpf),
+      // Omitidos quando não há formação declarada. Mandar `null` não é o mesmo:
+      // o schema aceita o campo ausente, e enviar a chave vazia só aumenta a
+      // superfície de um corpo que o servidor já valida aos pares.
+      if (universidadeId != null && universidadeId.isNotEmpty)
+        'universidadeId': universidadeId,
+      if (cursoId != null && cursoId.isNotEmpty) 'cursoId': cursoId,
     },
   );
+
+  @override
+  Future<void> cadastrarInstituicao({
+    required TipoConta tipo,
+    required String nome,
+    required String cnpj,
+    required String email,
+    required String username,
+    required String senha,
+    required String telefone,
+    String? sigla,
+  }) {
+    assert(
+      tipo.eInstitucional,
+      'aluno não se cadastra aqui; use cadastrar()',
+    );
+    return _api.postSemCorpo(
+      '/auth/register/instituicao',
+      corpo: {
+        'tipo': tipo.name,
+        'nome': nome,
+        'cnpj': normalizarCnpj(cnpj),
+        'email': email,
+        'username': username,
+        'senha': senha,
+        'telefone': telefone,
+        if (sigla != null && sigla.isNotEmpty) 'sigla': sigla,
+      },
+    );
+  }
 
   @override
   Future<ParDeTokens> entrar({

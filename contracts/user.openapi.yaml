@@ -752,9 +752,17 @@ components:
       type: string
       enum: [aluno, faculdade, empresa]
       description: |
-        Só `aluno` nasce por autocadastro. `faculdade` e `empresa` são
-        provisionados à mão enquanto não há verificação institucional — e são os
-        únicos tipos sem CPF.
+        Os três nascem por autocadastro: `aluno` em `POST /auth/register`,
+        `faculdade` e `empresa` em `POST /auth/register/instituicao`. O que
+        separa os dois caminhos é o documento — CPF de um lado, CNPJ do outro, e
+        nunca os dois na mesma conta — e o fato de a conta institucional nascer
+        **pendente**, com `ativadaEm` nulo, até ser ativada.
+
+        Não existe conta de administrador e não existe operador no caminho do
+        cadastro. O texto anterior desta descrição dizia que `faculdade` e
+        `empresa` eram provisionadas à mão; isso deixou de valer quando o
+        cadastro institucional entrou, e o estado pendente passou a ser o que
+        segura uma conta que ninguém verificou.
 
     Universidade:
       type: object

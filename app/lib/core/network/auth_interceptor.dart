@@ -35,23 +35,34 @@ class AuthInterceptor extends Interceptor {
   /// invalidariam umas às outras, porque o contrato rotaciona o token.
   Future<String?>? _renovacaoEmVoo;
 
-  /// Rotas que não levam token e nunca devem disparar renovação.
-  static const _publicas = {
+  /// Rotas de credencial: não levam token e um 401 nelas **não** é sessão
+  /// expirada, é resposta de negócio.
+  ///
+  /// A lista é só de `/auth/*` de propósito. Uma versão anterior tinha também
+  /// `/universidades`, para poupar o token no combobox do cadastro, e com isso
+  /// deixava sem `Authorization` tudo que pendura naquele prefixo — inclusive
+  /// `POST /universidades/{id}/vinculo`, que é justamente o "inserir CPF", e
+  /// `GET /universidades/{id}`, que precisa do leitor para calcular
+  /// `temVinculo`. Prefixo é do caminho, não da autorização.
+  ///
+  /// O que sobrou é o mínimo: mandar um token a uma rota que não o lê é
+  /// inofensivo — o serviço só o consulta onde declara a dependência — enquanto
+  /// omiti-lo onde ele é exigido quebra a rota em silêncio.
+  static const _deCredencial = {
     '/auth/login',
     '/auth/register',
     '/auth/refresh',
-    '/universidades',
   };
 
-  bool _ePublica(String caminho) =>
-      _publicas.any((p) => caminho == p || caminho.startsWith('$p/'));
+  bool _eDeCredencial(String caminho) =>
+      _deCredencial.any((p) => caminho == p || caminho.startsWith('$p/'));
 
   @override
   Future<void> onRequest(
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    if (!_ePublica(options.path)) {
+    if (!_eDeCredencial(options.path)) {
       final token = await _tokens.lerAccessToken();
       if (token != null) {
         options.headers['Authorization'] = 'Bearer $token';
@@ -69,7 +80,7 @@ class AuthInterceptor extends Interceptor {
 
     final naoEhRenovavel =
         response.statusCode != 401 ||
-        _ePublica(options.path) ||
+        _eDeCredencial(options.path) ||
         options.extra['jaTentouRenovar'] == true;
 
     if (naoEhRenovavel) {

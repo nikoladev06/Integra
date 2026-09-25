@@ -16,6 +16,7 @@ casarem com o banco real.
 """
 
 import asyncio
+from hashlib import blake2b
 from uuid import UUID, uuid5
 
 from sqlalchemy import select
@@ -27,6 +28,23 @@ from user_service.models import Curso, Universidade
 # Namespace fixo do projeto. Trocar este valor muda TODOS os ids: só faça isso
 # numa base vazia.
 NAMESPACE = UUID("6f1d5b2a-8c34-4f21-9a7e-2b0c5d3e4f60")
+
+
+def _cnpj_de_exemplo(sigla: str) -> str:
+    """Semente estável a partir da sigla, para o CNPJ de exemplo.
+
+    Era `hash(sigla)`, que **não** é determinístico entre execuções: o Python
+    randomiza o hash de `str` por processo desde a 3.3, salvo `PYTHONHASHSEED`
+    fixo. O comentário logo abaixo prometia determinismo e a base ganhava um CNPJ
+    diferente a cada vez que era semeada do zero — o suficiente para uma conta
+    institucional reivindicar a universidade na máquina de um dev e não na do
+    outro, com os dois olhando o mesmo `seed.py`.
+
+    `blake2b` é estável entre processos, versões e plataformas. Continua sendo um
+    valor de exemplo: o que resolve de vez é preencher os CNPJ verdadeiros.
+    """
+    digest = blake2b(sigla.encode("utf-8"), digest_size=8).digest()
+    return gerar_cnpj(int.from_bytes(digest, "big") % 100_000_000)
 
 
 def _id_de(*partes: str) -> UUID:
@@ -98,7 +116,7 @@ async def semear() -> tuple[int, int]:
                             id=uni_id,
                             nome=nome,
                             sigla=sigla,
-                            cnpj=gerar_cnpj(abs(hash(sigla)) % 100_000_000),
+                            cnpj=_cnpj_de_exemplo(sigla),
                         )
                     )
                     universidades_novas += 1

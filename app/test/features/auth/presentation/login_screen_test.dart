@@ -1,27 +1,14 @@
-import 'package:flutter/widgets.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'package:integra/core/storage/token_storage.dart';
-import 'package:integra/features/auth/data/fake_auth_repository.dart';
 import 'package:integra/features/profile/data/fixtures.dart';
 
 import '../../../helpers/bombear_app.dart';
+import '../../../helpers/localizadores.dart';
 
 void main() {
-  /// Localiza o campo pelo rótulo visível, não por posição.
-  ///
-  /// `ShadInput` monta um `EditableText`, não o `TextField` do Material, então
-  /// os seletores usuais não o encontram. Buscar pelo rótulo mantém o teste
-  /// legível e não quebra se a ordem dos campos mudar.
-  Finder campo(String rotulo) => find.descendant(
-    of: find.ancestor(
-      of: find.text(rotulo),
-      matching: find.byType(ShadInputFormField),
-    ),
-    matching: find.byType(EditableText),
-  );
-
   Future<void> preencherEEnviar(
     WidgetTester tester, {
     required String email,
@@ -92,12 +79,28 @@ void main() {
         senha: Fixtures.senhaDemo,
       );
 
-      // As abas passaram a ser só ícone. O nome continua no widget — como
-      // tooltip e rótulo semântico — e é por ele que o teste as encontra,
-      // que é também como um leitor de tela as encontraria.
+      // As abas são só ícone. O nome continua no widget — como tooltip e rótulo
+      // semântico — e é por ele que o teste as encontra, que é também como um
+      // leitor de tela as encontraria.
       expect(find.byTooltip('Acadêmico'), findsOne);
       expect(find.byTooltip('Profissional'), findsOne);
       expect(find.byTooltip('Perfil'), findsOne);
+    });
+
+    testWidgets('entrar carrega o perfil de QUEM entrou', (tester) async {
+      await bombearApp(tester);
+      await preencherEEnviar(
+        tester,
+        email: Fixtures.emailSemVinculo,
+        senha: Fixtures.senhaSemVinculo,
+      );
+
+      await tester.tap(find.byTooltip('Perfil'));
+      await tester.pumpAndSettle();
+
+      // Antes de os dois falsos compartilharem estado, o perfil vinha de uma
+      // fixture fixa: entrar como o Bruno mostrava o nome da Ana.
+      expect(find.text(Fixtures.perfilSemVinculo.nomeCompleto), findsOne);
     });
 
     testWidgets('a credencial de exemplo aparece no modo de fixtures', (
@@ -112,39 +115,44 @@ void main() {
     testWidgets('token guardado abre direto no app, sem passar pelo login', (
       tester,
     ) async {
-      await bombearApp(
-        tester,
-        tokens: TokenStorageEmMemoria(
-          accessToken: 'token-valido',
-          refreshToken: 'refresh-valido',
-        ),
-      );
+      await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
 
       expect(find.byTooltip('Acadêmico'), findsOne);
       expect(find.widgetWithText(ShadButton, 'Entrar'), findsNothing);
     });
 
-    testWidgets('sair da conta volta para o login', (tester) async {
+    testWidgets('token guardado sem conta correspondente cai no login', (
+      tester,
+    ) async {
+      // É o que acontece com uma sessão velha: o token existe, o perfil não
+      // vem, e o app precisa voltar ao login em vez de quebrar na abertura.
       await bombearApp(
         tester,
-        auth: FakeAuthRepository(latencia: Duration.zero),
         tokens: TokenStorageEmMemoria(
-          accessToken: 'token-valido',
-          refreshToken: 'refresh-valido',
+          accessToken: 'token-de-sessao-velha',
+          refreshToken: 'refresh-velho',
         ),
       );
+
+      expect(find.widgetWithText(ShadButton, 'Entrar'), findsOne);
+      expect(find.text('Sessão expirada. Entre novamente.'), findsOne);
+    });
+
+    testWidgets('sair da conta volta para o login', (tester) async {
+      await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
 
       await tester.tap(find.byTooltip('Perfil'));
       await tester.pumpAndSettle();
 
-      // O perfil veio do repositório, atravessando sessão → repositório →
-      // fixtures → tela. É esta asserção que prova a costura ponta a ponta.
+      // O perfil veio do repositório, atravessando sessão → repositório → banco
+      // → tela. É esta asserção que prova a costura ponta a ponta.
       expect(find.text(Fixtures.perfilDemo.nomeCompleto), findsOne);
       expect(find.text('Vínculo institucional'), findsOne);
 
       // O botão está no fim de um ListView, e item fora da viewport não é
       // construído — daí rolar em vez de procurar direto.
-      await tester.scrollUntilVisible(find.text('Sair da conta'), 200);
+      await tester.ensureVisible(find.text('Sair da conta'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Sair da conta'));
       await tester.pumpAndSettle();
 
