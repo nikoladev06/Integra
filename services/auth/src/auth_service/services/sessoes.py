@@ -145,8 +145,8 @@ async def _emitir_par(
         UsuarioAutenticado(
             id=credencial_id,
             tipo=perfil["tipo"],
-            universidade_id=perfil["universidade_id"],
-            curso_id=perfil["curso_id"],
+            vinculo_universidade_id=perfil["vinculo_universidade_id"],
+            vinculo_curso_id=perfil["vinculo_curso_id"],
         ),
         settings,
     )
@@ -170,11 +170,15 @@ async def _emitir_par(
 
 
 async def _buscar_perfil(usuario_id: UUID) -> dict:
-    """Busca tipo e afiliação no user-service, para gravar no access token.
+    """Busca tipo e VÍNCULO no user-service, para gravar no access token.
 
-    A afiliação viaja no token para o academic-service resolver visibilidade sem
-    consultar o user-service a cada post. O preço, conhecido e aceito: trocar de
-    curso só vale no token seguinte.
+    O vínculo viaja no token para o academic-service resolver visibilidade sem
+    consultar o user-service a cada post. O preço, conhecido e aceito: entrar ou
+    sair de um vínculo só vale no token seguinte.
+
+    **Formação declarada não entra aqui.** Ela é cosmética e o próprio usuário a
+    digita sem verificação — lê-la como se fosse vínculo concederia acesso pelo
+    que o usuário escreveu sozinho.
     """
     async with httpx.AsyncClient(
         base_url=settings.user_service_url, timeout=httpx.Timeout(10.0)
@@ -195,11 +199,14 @@ async def _buscar_perfil(usuario_id: UUID) -> dict:
         )
 
     corpo = resposta.json()
-    afiliacao = corpo.get("afiliacao") or {}
+    # `vinculo` é nulo em toda conta recém-criada, e continua nulo para quem nunca
+    # informou o CPF numa instituição. Não é caso de erro: é o estado normal, e o
+    # token sai sem vínculo, dando acesso apenas a posts públicos.
+    vinculo = corpo.get("vinculo") or {}
     return {
         "tipo": corpo.get("tipo", "aluno"),
-        "universidade_id": _uuid_ou_none(afiliacao.get("universidade", {}).get("id")),
-        "curso_id": _uuid_ou_none(afiliacao.get("curso", {}).get("id")),
+        "vinculo_universidade_id": _uuid_ou_none((vinculo.get("universidade") or {}).get("id")),
+        "vinculo_curso_id": _uuid_ou_none((vinculo.get("curso") or {}).get("id")),
     }
 
 

@@ -1,33 +1,45 @@
-# RASCUNHO — fechado na Sprint 4. Não implementar contra este arquivo.
-#
-# REVISADO após a orientação de front de 19/09/2026: alunos passam a seguir
-# universidades além da própria, e o feed ganha um seletor de escopo.
 openapi: 3.1.0
 info:
   title: Integra — academic-service (RASCUNHO)
-  version: 0.2.0-draft
+  version: 0.3.0-draft
   description: |
-    Posts institucionais publicados por contas do tipo `faculdade`, com três
-    níveis de visibilidade, e curtidas e comentários dos alunos que podem vê-los.
+    Posts institucionais publicados por contas `faculdade`, com três níveis de
+    visibilidade, e curtidas e comentários de quem pode vê-los.
 
-    REGRA DE SEGURANÇA CENTRAL — seguir NÃO concede acesso a conteúdo restrito.
-    Um aluno vê, de cada universidade:
+    REGRA DE SEGURANÇA CENTRAL — quem concede acesso é o VÍNCULO, e só ele.
 
-      da PRÓPRIA (tem afiliação)      publico        ve
-                                      institucional  ve
-                                      curso == o seu ve
-                                      curso != o seu NAO ve
+      vinculo ATIVO com a universidade   publico        ve
+                                         institucional  ve
+                                         curso == o do  ve
+                                           vinculo
+                                         outro curso    NAO ve
 
-      de uma SEGUIDA (sem vínculo)    publico        ve
-                                      institucional  NAO ve
-                                      curso          NAO ve
+      segue, sem vinculo                 publico        ve
+                                         institucional  NAO ve
+                                         curso          NAO ve
 
-    Sem essa assimetria, seguir vira um botão de escalar privilégio: qualquer
-    pessoa segue uma instituição e lê os comunicados internos dela.
+      nem segue nem tem vinculo          publico        ve (pelo perfil da
+                                                            instituicao ou por
+                                                            recomendacao)
+                                         o resto        NAO ve
 
-    A visibilidade é resolvida NO SERVIÇO, na consulta. O cliente nunca recebe
-    um post que não deveria ver e depois filtra — isso transformaria a regra
-    numa decoração de UI, contornável por quem ler a resposta da API.
+    TRES COISAS QUE NAO CONCEDEM NADA, e que é fácil confundir com quem concede:
+
+    1. **Formação declarada.** O usuário digita a faculdade que quiser, sem
+       verificação. É cosmético.
+    2. **Formação verificada sem vínculo ativo.** Quem se formou, ou foi removido
+       pela instituição, mantém o selo e volta a ver apenas os públicos. O selo é
+       currículo, não credencial de acesso.
+    3. **Seguir.** Coloca a instituição no feed; não abre o conteúdo interno.
+
+    Na v0.2 o acesso vinha da afiliação informada no cadastro — isto é, do que o
+    próprio usuário digitava. Era o modelo errado: bastava declarar uma faculdade
+    para ler os comunicados internos dela.
+
+    A visibilidade é resolvida NO SERVIÇO, na consulta, a partir do claim
+    `vinculoUniversidadeId`/`vinculoCursoId` do token. O cliente nunca recebe um
+    post que não deveria ver e depois filtra — isso transformaria a regra numa
+    decoração de UI, contornável por quem ler a resposta da API.
 
 paths:
   /academic/posts:
@@ -36,13 +48,17 @@ paths:
       description: |
         O parâmetro `escopo` corresponde ao seletor no topo da tela:
 
-          geral  (padrão)  a própria universidade + todas as seguidas
-          minha            só a própria universidade
+          geral  (padrão)  a universidade do vínculo + todas as seguidas
+          minha            só a universidade do vínculo ativo
+
+        Sem vínculo, `minha` responde lista vazia — não é erro, é o estado de
+        quem ainda não informou o CPF em nenhuma instituição. A tela mostra o
+        caminho: buscar a faculdade e inserir o CPF.
 
         `escopo` escolhe QUAIS universidades entram, nunca QUAL conteúdo: a
         matriz de visibilidade acima vale igual nos dois casos. Não existe
-        parâmetro de universidade arbitrária — o conjunto sai da afiliação e da
-        lista de seguidas do próprio token, e não do que o cliente pedir.
+        parâmetro de universidade arbitrária — o conjunto sai do vínculo e da
+        lista de seguidas, e não do que o cliente pedir.
       parameters:
         - name: escopo
           in: query
@@ -58,6 +74,9 @@ paths:
       description: |
         Exige `tipo == faculdade` no token; aluno recebe 403. A universidade do
         post é a do autor — não é um campo do corpo.
+
+        `cursoId` é obrigatório quando `visibilidade == curso`, e precisa ser um
+        curso desta instituição.
 
         `visibilidade` é obrigatória e SEM valor padrão no servidor: o formulário
         do cliente pré-seleciona `institucional`, mas o serviço não adivinha.
@@ -83,14 +102,16 @@ components:
       type: string
       enum: [publico, institucional, curso]
       description: |
-        publico        qualquer usuário, inclusive de outra instituição que siga
-        institucional  apenas alunos com afiliação a esta universidade
-        curso          apenas alunos afiliados a um curso específico dela
+        publico        qualquer usuário autenticado
+        institucional  apenas quem tem VÍNCULO ATIVO com esta universidade
+        curso          apenas quem tem vínculo ativo NESTE curso dela
 
 # EM ABERTO PARA A SPRINT 4
 # - "turma" existe como entidade, ou restrição por curso basta?
 # - post restrito a MAIS DE UM curso, ou só um?
 # - faculdade edita post publicado, ou só apaga?
-# - um post `publico` aparece para quem NAO segue a universidade? (busca,
-#   descoberta) Hoje o escopo do feed diz que não; falta decidir se existe
-#   alguma tela de descoberta onde ele apareça.
+# - um post `publico` aparece para quem NAO segue a universidade? O perfil da
+#   instituicao mostra os publicos, isso esta definido. Falta decidir se eles
+#   tambem entram no feed de quem nao segue, como "recomendado".
+# - conta sem vinculo nenhum: o feed academico nasce vazio. Mostra so um convite
+#   a buscar a faculdade, ou tambem posts publicos recomendados?

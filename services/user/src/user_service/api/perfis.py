@@ -1,4 +1,4 @@
-"""Rotas de perfil e busca."""
+"""Rotas de perfil e busca de pessoas."""
 
 from uuid import UUID
 
@@ -19,7 +19,7 @@ router = APIRouter(tags=["perfil"])
 
 @router.get("/users/me", response_model=PerfilOut)
 async def meu_perfil(sessao: SessaoDep, usuario: UsuarioDep) -> PerfilOut:
-    return PerfilOut.model_validate(await _com_afiliacao(sessao, usuario.id))
+    return PerfilOut.model_validate(await perfis.obter(sessao, usuario.id))
 
 
 @router.patch("/users/me", response_model=PerfilOut)
@@ -38,7 +38,7 @@ async def buscar_usuarios(
     cursoId: UUID | None = None,
     limit: int = Query(default=20, le=50),
 ) -> PaginaDePerfis:
-    achados = await perfis.buscar(
+    achados = await perfis.buscar_pessoas(
         sessao, q, universidade_id=universidadeId, curso_id=cursoId, limite=limit
     )
     return PaginaDePerfis(
@@ -53,10 +53,13 @@ async def perfil_de(
     sessao: SessaoDep,
     _: UsuarioDep,
 ) -> PerfilPublicoOut:
-    # `PerfilPublicoOut` omite e-mail e telefone por construção: dados de contato
-    # não circulam entre alunos. A omissão é do tipo de saída, não de um `del`
-    # depois — assim não há como esquecer numa rota nova.
-    return PerfilPublicoOut.model_validate(await _com_afiliacao(sessao, userId))
+    # `PerfilPublicoOut` omite e-mail, telefone e **CPF** por construção: os
+    # campos não existem no tipo de saída, então não há como uma rota nova
+    # esquecer de removê-los.
+    return PerfilPublicoOut.model_validate(await perfis.obter(sessao, userId))
+
+
+# ───────────────────────  rotas internas (serviço)  ───────────────────────
 
 
 @router.post(
@@ -86,19 +89,12 @@ async def perfil_interno(
     userId: UUID,
     sessao: SessaoDep,
 ) -> PerfilOut:
-    """Perfil para consumo do auth-service, no login.
+    """Perfil para o auth-service montar o access token, no login.
 
-    Existe porque `GET /users/{userId}` exige JWT — e no login ainda não há
-    token para apresentar: é justamente ele que está sendo emitido. Tentar
-    reaproveitar a rota pública ali resulta em 401 no meio do login, que foi
-    exatamente o que aconteceu ao montar isto.
+    Existe porque `GET /users/{userId}` exige JWT — e no login ainda não há token
+    para apresentar: é justamente ele que está sendo emitido.
 
-    Devolve `PerfilOut` e não `PerfilPublicoOut`: quem chama é o serviço, não
-    outro aluno, e a omissão de contato existe para proteger usuário de usuário.
+    Devolve `PerfilOut`, com `vinculo`, porque é de lá que saem os claims
+    `vinculoUniversidadeId` e `vinculoCursoId`.
     """
     return PerfilOut.model_validate(await perfis.obter(sessao, userId))
-
-
-async def _com_afiliacao(sessao: SessaoDep, usuario_id: UUID):
-    """Carrega o usuário. `universidade` e `curso` vêm por `lazy="joined"`."""
-    return await perfis.obter(sessao, usuario_id)

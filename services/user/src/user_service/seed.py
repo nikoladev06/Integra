@@ -20,6 +20,7 @@ from uuid import UUID, uuid5
 
 from sqlalchemy import select
 
+from integra_shared.cnpj import gerar_valido as gerar_cnpj
 from user_service.database import engine, fabrica_de_sessao
 from user_service.models import Curso, Universidade
 
@@ -86,7 +87,20 @@ async def semear() -> tuple[int, int]:
                     select(Universidade).where(Universidade.nome == nome)
                 )
                 if por_nome.scalar_one_or_none() is None:
-                    sessao.add(Universidade(id=uni_id, nome=nome, sigla=sigla))
+                    # CNPJ determinístico, DERIVADO DA SIGLA e não real.
+                    # Os CNPJ verdadeiros das instituições precisam ser
+                    # preenchidos antes de qualquer uso sério: uma conta só
+                    # reivindica a universidade cujo CNPJ ela informar, então
+                    # com estes valores de exemplo a FATEC de verdade não
+                    # conseguiria assumir a linha semeada.
+                    sessao.add(
+                        Universidade(
+                            id=uni_id,
+                            nome=nome,
+                            sigla=sigla,
+                            cnpj=gerar_cnpj(abs(hash(sigla)) % 100_000_000),
+                        )
+                    )
                     universidades_novas += 1
                     await sessao.flush()
 

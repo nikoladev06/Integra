@@ -11,6 +11,8 @@ Vieram do protótipo, onde estavam presas a `BuildContext` dentro do
 
 import re
 
+from integra_shared.cpf import e_valido as cpf_e_valido
+
 SENHA_COMPRIMENTO_MINIMO = 6
 
 # O protótipo tinha duas expressões diferentes para e-mail: uma permissiva no
@@ -68,6 +70,22 @@ def validar_telefone(telefone: str | None) -> str | None:
     return None
 
 
+def validar_cpf(cpf: str | None) -> str | None:
+    """Confere os dígitos verificadores.
+
+    Recusa número digitado errado — **não** verifica identidade nem diz que a
+    pessoa existe. Vale porque um CPF impossível cadastrado numa matrícula nunca
+    casaria com conta alguma, e o erro apareceria meses depois como "o vínculo
+    não funciona", sem pista de onde veio.
+    """
+    valor = (cpf or "").strip()
+    if not valor:
+        return "CPF não pode ficar em branco"
+    if not cpf_e_valido(valor):
+        return "CPF inválido"
+    return None
+
+
 def erros_do_cadastro(
     *,
     nome_completo: str,
@@ -75,6 +93,7 @@ def erros_do_cadastro(
     username: str,
     senha: str,
     telefone: str,
+    cpf: str,
 ) -> dict[str, list[str]]:
     """Todos os erros de uma vez, no formato `fields` do contrato.
 
@@ -87,5 +106,6 @@ def erros_do_cadastro(
         "username": validar_username(username),
         "senha": validar_senha(senha),
         "telefone": validar_telefone(telefone),
+        "cpf": validar_cpf(cpf),
     }
     return {campo: [erro] for campo, erro in candidatos.items() if erro}

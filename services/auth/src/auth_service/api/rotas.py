@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth_service.database import fabrica_de_sessao
 from auth_service.schemas import (
     CadastroIn,
+    CadastroInstituicaoIn,
     CadastroOut,
     LoginIn,
     ParDeTokensOut,
@@ -38,6 +39,17 @@ router = APIRouter(prefix="/auth", tags=["sessão"])
 async def cadastrar(dados: CadastroIn, sessao: SessaoDep) -> CadastroOut:
     """Não faz login automático: o cliente redireciona para a tela de entrada."""
     return CadastroOut(user_id=await registro.cadastrar(sessao, dados))
+
+
+@router.post("/register/instituicao", response_model=CadastroOut, status_code=201)
+async def cadastrar_instituicao(dados: CadastroInstituicaoIn, sessao: SessaoDep) -> CadastroOut:
+    """Cadastro de faculdade ou empresa, pelas telas próprias de cada uma.
+
+    A conta nasce **pendente**: entra e edita o perfil, mas não publica nem
+    matricula até ser ativada. O cliente lê `ativadaEm` em `/users/me` para
+    mostrar o aviso de análise.
+    """
+    return CadastroOut(user_id=await registro.cadastrar_instituicao(sessao, dados))
 
 
 @router.post("/login", response_model=ParDeTokensOut)

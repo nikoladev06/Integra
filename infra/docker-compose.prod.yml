@@ -45,7 +45,7 @@ services:
     environment:
       INTEGRA_AMBIENTE: producao
     labels:
-      - traefik.http.routers.user.rule=Host(`${DOMINIO}`) && (PathPrefix(`/users`) || PathPrefix(`/universidades`))
+      - traefik.http.routers.user.rule=Host(`${DOMINIO}`) && (PathPrefix(`/users`) || PathPrefix(`/universidades`) || PathPrefix(`/busca`))
       - traefik.http.routers.user.entrypoints=websecure
       - traefik.http.routers.user.tls.certresolver=le
       - traefik.http.routers.user-health.rule=Host(`${DOMINIO}`) && Path(`/health/user`)

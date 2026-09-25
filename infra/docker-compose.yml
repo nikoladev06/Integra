@@ -115,7 +115,10 @@ services:
       - traefik.http.services.user.loadbalancer.server.port=8000
       # Um serviço, dois prefixos: `/universidades` alimenta o Select do cadastro
       # e é consultado sem autenticação, antes de existir conta.
-      - traefik.http.routers.user.rule=PathPrefix(`/users`) || PathPrefix(`/universidades`)
+      # Três prefixos: /universidades alimenta o cadastro sem autenticação, e
+      # /busca é a caixa do cabeçalho. Um prefixo esquecido aqui vira 404 do
+      # Traefik em texto puro — indistinguível de rota inexistente no serviço.
+      - traefik.http.routers.user.rule=PathPrefix(`/users`) || PathPrefix(`/universidades`) || PathPrefix(`/busca`)
       - traefik.http.routers.user.entrypoints=web
       - traefik.http.routers.user-health.rule=Path(`/health/user`)
       - traefik.http.routers.user-health.entrypoints=web

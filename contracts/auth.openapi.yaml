@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Integra — auth-service
-  version: 1.0.0
+  version: 2.0.0
   description: |
     Identidade e sessão. Emite e renova JWT, e permite a troca de senha por um
     usuário autenticado.
@@ -52,7 +52,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/RegisterResponse' }
         '409':
-          description: E-mail ou username já cadastrado
+          description: E-mail, username ou CPF já cadastrado
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -61,6 +61,60 @@ paths:
                   value: { code: email_ja_cadastrado, message: 'Email já cadastrado' }
                 usernameEmUso:
                   value: { code: username_ja_existe, message: 'Username já existe' }
+                cpfEmUso:
+                  value: { code: cpf_ja_cadastrado, message: 'CPF já cadastrado' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/register/instituicao:
+    post:
+      tags: [sessão]
+      summary: Cadastra uma faculdade ou empresa
+      operationId: registerInstituicao
+      description: |
+        Uma rota, duas telas: o cliente tem um formulário para faculdade e outro
+        para empresa, e os dois postam aqui com `tipo` diferente.
+
+        **A conta nasce pendente.** Ela entra, edita o perfil e vê a própria
+        página, mas não publica nem matricula até ser ativada — o cliente lê
+        `ativadaEm` em `GET /users/me` e mostra o aviso de análise enquanto for
+        nulo.
+
+        O motivo: CNPJ é dado **público**, está no cadastro aberto da Receita.
+        O número identifica a organização e não prova que quem digitou a
+        representa. Sem o estado pendente, consultar o CNPJ de uma faculdade
+        bastaria para distribuir formações "verificadas" no nome dela — e o selo,
+        que é a peça central do modelo, deixaria de significar algo.
+
+        Para `faculdade`, o CNPJ também decide a identidade da instituição:
+        casando com uma universidade já catalogada e sem conta, a conta
+        **reivindica** aquela linha — a mesma que alunos já seguem e declararam.
+        Casando com uma já administrada, responde `409`. Sem correspondência, uma
+        universidade nova é criada.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterInstituicaoRequest' }
+      responses:
+        '201':
+          description: Conta criada, pendente de ativação. Não faz login automático.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterResponse' }
+        '409':
+          description: E-mail, username ou CNPJ já cadastrado, ou instituição já administrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                cnpjEmUso:
+                  value: { code: cnpj_ja_cadastrado, message: 'CNPJ já cadastrado' }
+                jaAdministrada:
+                  value:
+                    code: universidade_ja_administrada
+                    message: 'Esta instituição já tem uma conta cadastrada'
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -201,7 +255,12 @@ components:
   schemas:
     RegisterRequest:
       type: object
-      required: [nomeCompleto, email, username, senha, telefone, universidadeId, cursoId]
+      required: [nomeCompleto, email, username, senha, telefone, cpf]
+      description: |
+        `universidadeId` e `cursoId` são **opcionais** desde a v2: declarar
+        formação é cosmético e não concede acesso a nada. Quem os informa ganha
+        uma linha no currículo, não um vínculo — o vínculo nasce no
+        `user-service`, quando o aluno informa o CPF no perfil da instituição.
       properties:
         nomeCompleto:
           type: string
@@ -226,14 +285,65 @@ components:
           type: string
           pattern: '^\(?\d{2}\)?[\s-]?\d{4,5}-?\d{4}$'
           examples: ['(16)99999-9999']
+        cpf:
+          type: string
+          description: |
+            Obrigatório e **único por conta**. Com ou sem pontuação; normalizado
+            para dígitos e validado pelos dígitos verificadores — o que recusa
+            valor digitado errado, não identidade.
+
+            É a chave que liga a conta às matrículas que as faculdades cadastram.
+            Por isso não é editável depois: trocar o próprio CPF pelo de outra
+            pessoa permitiria assumir a matrícula dela.
+          examples: ['123.456.789-00']
         universidadeId:
           type: string
           format: uuid
-          description: De `GET /universidades` no user-service.
+          description: |
+            Opcional. De `GET /universidades`. Informado junto com `cursoId`,
+            cria uma formação **declarada** — sem verificação, como no LinkedIn.
         cursoId:
           type: string
           format: uuid
-          description: De `GET /universidades/{id}/cursos`. Precisa pertencer à universidade informada.
+          description: |
+            Opcional, e obrigatório se `universidadeId` vier. De
+            `GET /universidades/{id}/cursos` — os cursos que a própria
+            instituição cadastrou.
+
+    RegisterInstituicaoRequest:
+      type: object
+      required: [tipo, nome, cnpj, email, username, senha, telefone]
+      description: |
+        Sem CPF e sem formação: organização não estuda em lugar nenhum, e CPF é de
+        pessoa. Uma conta nunca tem CPF e CNPJ ao mesmo tempo — o banco recusa.
+      properties:
+        tipo:
+          type: string
+          enum: [faculdade, empresa]
+          description: '`aluno` não é aceito aqui; use `POST /auth/register`.'
+        nome:
+          type: string
+          maxLength: 200
+          description: Nome da instituição, como aparecerá no perfil.
+          examples: ['Faculdade de Tecnologia de Ribeirão Preto']
+        cnpj:
+          type: string
+          description: |
+            Com ou sem pontuação; normalizado para dígitos e validado pelos
+            dígitos verificadores. Único por conta.
+          examples: ['12.345.678/0001-95']
+        sigla:
+          type: string
+          maxLength: 20
+          description: |
+            Opcional, e só usada quando o CNPJ não corresponde a nenhuma
+            universidade catalogada e uma nova é criada. Ausente, as iniciais do
+            nome servem de rótulo curto até a instituição editar o perfil.
+          examples: ['FATEC RP']
+        email: { type: string, format: email }
+        username: { type: string, minLength: 3, pattern: '^[a-zA-Z0-9_]+$' }
+        senha: { type: string, minLength: 6, format: password }
+        telefone: { type: string, pattern: '^\(?\d{2}\)?[\s-]?\d{4,5}-?\d{4}$' }
 
     RegisterResponse:
       type: object
@@ -270,9 +380,22 @@ components:
         accessToken:
           type: string
           description: |
-            JWT assinado em HS256. Claims: `sub` (userId), `tipo`
-            (aluno|faculdade|empresa), `universidadeId`, `cursoId`, `exp`, `iat`.
-            Os demais serviços validam a assinatura sem chamar o auth-service.
+            JWT assinado em HS256, validado localmente pelos outros serviços sem
+            chamada de rede ao auth-service.
+
+            Claims: `sub` (userId), `tipo` (aluno|faculdade|empresa), `exp`,
+            `iat`, e o **vínculo ativo** em `vinculoUniversidadeId` e
+            `vinculoCursoId` — **nulos quando não há vínculo**, que é o estado de
+            toda conta recém-criada.
+
+            Os nomes trazem `vinculo` de propósito: até a v1 eram
+            `universidadeId`/`cursoId` e significavam a afiliação declarada, que
+            agora não concede nada. Nomes iguais com semântica trocada seriam a
+            forma mais fácil de um serviço conceder acesso pela formação que o
+            usuário digitou sozinho.
+
+            Formação declarada **não** entra no token: ela é cosmética, e o que
+            não decide autorização não precisa viajar em toda requisição.
         refreshToken:
           type: string
           description: Opaco, guardado no servidor. Não é JWT.
@@ -327,6 +450,7 @@ components:
               email: ['Insira um e-mail válido (ex: usuario@exemplo.com)']
               senha: ['Senha deve ter no mínimo 6 caracteres']
               nomeCompleto: ['Nome completo deve ter pelo menos 2 nomes']
+              cpf: ['CPF inválido']
 
 security:
   - bearerAuth: []

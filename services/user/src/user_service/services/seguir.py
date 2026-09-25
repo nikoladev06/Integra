@@ -3,10 +3,10 @@
 Mora no user-service, e não nos serviços de feed, porque quem segue quem é
 atributo do usuário — e os dois feeds consultam a mesma lista.
 
-**Seguir não concede acesso a conteúdo restrito.** Quem segue uma instituição
-sem ter vínculo passa a ver apenas os posts `publico`; `institucional` e `curso`
-continuam exigindo afiliação. Este módulo só registra a intenção; quem aplica a
-regra é o academic-service, na consulta. Está dito aqui porque é a primeira
+**Seguir não concede acesso a conteúdo restrito.** Quem segue uma instituição sem
+ter vínculo passa a ver apenas os posts `publico`; `institucional` e `curso`
+continuam exigindo vínculo ativo. Este módulo só registra interesse; quem aplica
+a regra é o academic-service, na consulta. Está dito aqui porque é a primeira
 coisa que alguém lendo "seguir" vai assumir errado.
 """
 
@@ -25,19 +25,22 @@ from user_service.models import (
     Usuario,
 )
 from user_service.schemas import UniversidadeSeguidaOut
-from user_service.services import perfis
+from user_service.services import perfis, vinculos
 
 
 async def listar_universidades(
     sessao: AsyncSession, usuario_id: UUID
 ) -> list[UniversidadeSeguidaOut]:
-    """Seguidas explicitamente, mais a própria.
+    """Seguidas explicitamente, mais a do vínculo ativo.
 
-    A universidade da afiliação entra sempre, mesmo sem registro na tabela: ela
-    não é opcional, e deixá-la de fora faria o escopo "geral" do feed excluir
-    justamente a instituição do aluno.
+    A universidade do vínculo entra sempre, mesmo sem registro nesta tabela: ela
+    não é opcional enquanto o vínculo existir, e deixá-la de fora faria o escopo
+    "geral" do feed excluir justamente a instituição do aluno.
+
+    **Uma conta sem vínculo pode ter esta lista vazia** — é o estado normal de
+    quem acabou de se cadastrar, não um erro.
     """
-    usuario = await perfis.obter(sessao, usuario_id)
+    vinculo = await vinculos.obter(sessao, usuario_id)
 
     resultado = await sessao.execute(
         select(Universidade, SeguindoUniversidade.seguida_em)
@@ -52,17 +55,15 @@ async def listar_universidades(
     saida: list[UniversidadeSeguidaOut] = []
     vistas: set[UUID] = set()
 
-    if usuario.universidade is not None:
-        vistas.add(usuario.universidade.id)
+    if vinculo is not None:
+        vistas.add(vinculo.universidade.id)
         saida.append(
-            UniversidadeSeguidaOut.model_validate(
-                {
-                    "id": usuario.universidade.id,
-                    "nome": usuario.universidade.nome,
-                    "sigla": usuario.universidade.sigla,
-                    "propria": True,
-                    "seguida_em": None,
-                }
+            UniversidadeSeguidaOut(
+                id=vinculo.universidade.id,
+                nome=vinculo.universidade.nome,
+                sigla=vinculo.universidade.sigla,
+                propria=True,
+                seguida_em=None,
             )
         )
 
@@ -70,29 +71,27 @@ async def listar_universidades(
         if universidade.id in vistas:
             continue
         saida.append(
-            UniversidadeSeguidaOut.model_validate(
-                {
-                    "id": universidade.id,
-                    "nome": universidade.nome,
-                    "sigla": universidade.sigla,
-                    "propria": False,
-                    "seguida_em": seguida_em,
-                }
+            UniversidadeSeguidaOut(
+                id=universidade.id,
+                nome=universidade.nome,
+                sigla=universidade.sigla,
+                propria=False,
+                seguida_em=seguida_em,
             )
         )
 
     return saida
 
 
+async def segue_universidade(sessao: AsyncSession, usuario_id: UUID, universidade_id: UUID) -> bool:
+    linha = await sessao.get(SeguindoUniversidade, (usuario_id, universidade_id))
+    return linha is not None
+
+
 async def seguir_universidade(
     sessao: AsyncSession, usuario_id: UUID, universidade_id: UUID
 ) -> None:
-    if await sessao.get(Universidade, universidade_id) is None:
-        raise AppError(
-            code="nao_encontrado",
-            message="Universidade não encontrada",
-            status_code=404,
-        )
+    await perfis.obter_universidade(sessao, universidade_id)
 
     # `ON CONFLICT DO NOTHING` em vez de consultar antes de inserir: idempotente
     # sem condição de corrida entre a checagem e a escrita.
@@ -106,14 +105,15 @@ async def seguir_universidade(
 async def deixar_de_seguir_universidade(
     sessao: AsyncSession, usuario_id: UUID, universidade_id: UUID
 ) -> None:
-    usuario = await perfis.obter(sessao, usuario_id)
+    vinculo = await vinculos.obter(sessao, usuario_id)
 
-    if usuario.universidade_id == universidade_id:
-        # O vínculo não é escolha de feed: sair dele seria perder os comunicados
-        # que a instituição dirige ao aluno.
+    if vinculo is not None and vinculo.universidade_id == universidade_id:
+        # Enquanto o vínculo existe, a instituição não sai do feed: sair dela
+        # seria perder os comunicados que ela dirige ao aluno. O caminho é
+        # encerrar o vínculo, que é uma decisão diferente e mais consciente.
         raise AppError(
-            code="universidade_propria",
-            message="Você não pode deixar de seguir sua própria universidade",
+            code="universidade_do_vinculo",
+            message="Encerre o vínculo antes de deixar de seguir esta instituição",
             status_code=409,
         )
 

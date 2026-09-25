@@ -2,15 +2,37 @@ openapi: 3.1.0
 
 info:
   title: Integra — user-service
-  version: 1.1.0
+  version: 2.1.0
   description: |
-    Perfil, tipo de conta e vínculo institucional.
+    Perfil, formação, vínculo institucional e o grafo de seguidores.
 
-    Este serviço existe por causa de uma correção estrutural: no protótipo,
-    `universidade` e `curso` eram texto livre no `UserModel`, o que torna
-    impossível responder "quais alunos são desta faculdade" ou "restrito a este
-    curso" — as duas perguntas centrais do pilar Acadêmico. Aqui são entidades com
-    chave estrangeira.
+    ## A mudança de modelo da v2
+
+    Até a v1 havia **uma** noção de afiliação, obrigatória no cadastro, que ao
+    mesmo tempo aparecia no perfil e concedia acesso aos posts internos da
+    instituição. Isso misturava duas coisas de naturezas diferentes. A v2 as
+    separa:
+
+    **Formação declarada** — o que a pessoa diz. Opcional, sem nenhuma
+    verificação, como no LinkedIn: dá para declarar uma faculdade onde nunca se
+    estudou. Aparece no perfil e **não concede acesso a nada**.
+
+    **Vínculo institucional** — o que a faculdade confirma. Nasce quando o aluno
+    informa o CPF no perfil da faculdade e aquele CPF consta na lista que ela
+    cadastrou. É o **único** mecanismo que concede visibilidade de posts
+    `institucional` e `curso`.
+
+    ## Duas cardinalidades que não são a mesma
+
+    | | quantidade | efeito |
+    | --- | --- | --- |
+    | `Formacao` | 0..N, acumula | cosmético; o selo de verificada é permanente |
+    | `Vinculo` | **0..1**, se move | concede visibilidade; um por vez |
+
+    Trocar de faculdade encerra o vínculo anterior e abre o novo, mas **as duas
+    formações continuam verificadas** — quem se formou na primeira realmente
+    estudou lá, e apagar o selo reescreveria o passado. A consequência a não
+    esquecer: **formação verificada sem vínculo ativo não concede nada.**
 
 servers:
   - url: https://api.integra.app
@@ -20,15 +42,20 @@ servers:
 
 tags:
   - name: perfil
-  - name: busca
-  - name: instituições
-  - name: seguir
+  - name: formação
+    description: O currículo declarado. Cosmético.
+  - name: vínculo
     description: |
-      O grafo de seguidores. Mora aqui, e não nos serviços de feed, porque quem
-      segue quem é atributo do usuário — e os dois feeds consultam a mesma lista.
+      O laço verificado com uma instituição. Único por usuário e é o que
+      concede visibilidade — não confundir com formação.
+  - name: instituições
+    description: Perfis de universidade e a administração que cada uma faz de si.
+  - name: busca
+  - name: seguir
   - name: arquivos
 
 paths:
+  # ─────────────────────────────  perfil  ─────────────────────────────
   /users/me:
     get:
       tags: [perfil]
@@ -36,7 +63,7 @@ paths:
       operationId: getMe
       responses:
         '200':
-          description: Perfil completo, com a afiliação expandida
+          description: Perfil próprio, com contato, formações e vínculo
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Perfil' }
@@ -47,9 +74,12 @@ paths:
       summary: Atualiza o próprio perfil
       operationId: updateMe
       description: |
-        Campos omitidos ficam inalterados. `email` **não** é editável aqui — mudar
-        e-mail é mudar credencial e pertence ao auth-service; sem isso, os dois
-        serviços divergem sobre quem é o usuário.
+        Campos omitidos ficam inalterados.
+
+        **Não editáveis aqui:** `email` e `cpf`. O e-mail é credencial e pertence
+        ao auth-service. O CPF é a chave que liga a conta às matrículas das
+        faculdades — deixá-lo editável permitiria assumir a matrícula de outra
+        pessoa trocando o próprio CPF pelo dela.
       requestBody:
         required: true
         content:
@@ -76,15 +106,12 @@ paths:
       summary: Perfil público de outro usuário
       operationId: getUser
       parameters:
-        - name: userId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+        - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         '200':
           description: |
-            Perfil público. Omite `email` e `telefone` — dados de contato não
-            circulam entre alunos.
+            Perfil público. Omite `email`, `telefone` e **`cpf`** — o CPF nunca
+            sai do serviço em resposta pública, nem parcialmente mascarado.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PerfilPublico' }
@@ -95,93 +122,230 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
-  /users:
-    get:
-      tags: [busca]
-      summary: Busca usuários por username ou nome
-      operationId: searchUsers
+  # ───────────────────────────  formação  ───────────────────────────
+  /users/me/formacoes:
+    post:
+      tags: [formação]
+      summary: Declara uma formação
+      operationId: declararFormacao
       description: |
-        Substitui a busca por prefixo do protótipo, que usava o truque
-        `isLessThan: '${termo}z'` do Firestore. Aqui é `ILIKE` com índice trigram.
+        Sem nenhuma verificação, por decisão de produto. A formação nasce com
+        `verificadaEm: null` e só ganha o selo pelo fluxo de vínculo.
 
-        `universidadeId` é o filtro que sustenta "ver outros alunos da mesma
-        instituição", do pilar Acadêmico.
+        O curso precisa pertencer à universidade informada — não por
+        desconfiança, e sim porque os dois campos vêm de listas encadeadas na
+        tela, e um par impossível indica requisição malformada.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [universidadeId, cursoId]
+              properties:
+                universidadeId: { type: string, format: uuid }
+                cursoId: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Formação declarada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Formacao' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '409':
+          description: Esta formação já consta no perfil
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /users/me/formacoes/{formacaoId}:
+    delete:
+      tags: [formação]
+      summary: Remove uma formação do perfil
+      operationId: removerFormacao
+      description: |
+        Remove apenas formações **não verificadas**. Uma verificada responde
+        `409`: o selo é afirmação da instituição, não do usuário, e deixá-lo
+        apagável pelo perfil transformaria "verificado" em algo que o próprio
+        interessado controla. Para sair do vínculo existe
+        `DELETE /users/me/vinculo`, que é outra coisa.
       parameters:
-        - name: q
-          in: query
-          required: true
-          schema: { type: string, minLength: 2 }
-          description: Casa contra username e nome completo.
-        - name: universidadeId
-          in: query
-          schema: { type: string, format: uuid }
-        - name: cursoId
-          in: query
-          schema: { type: string, format: uuid }
-        - name: limit
-          in: query
-          schema: { type: integer, default: 20, maximum: 50 }
-        - name: cursor
-          in: query
-          schema: { type: string }
-          description: De `proximoCursor` da página anterior.
+        - { name: formacaoId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Removida }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404':
+          description: Formação não encontrada neste perfil
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Formação verificada não pode ser removida pelo usuário
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                code: formacao_verificada
+                message: 'Formações verificadas pela instituição não podem ser removidas'
+
+  # ───────────────────────────  vínculo  ───────────────────────────
+  /universidades/{universidadeId}/vinculo:
+    post:
+      tags: [vínculo]
+      summary: Informa o CPF para criar o vínculo com a instituição
+      operationId: criarVinculo
+      description: |
+        O fluxo por trás do item "inserir CPF" no menu do perfil da faculdade.
+
+        **Duas conferências, nesta ordem:**
+
+        1. o CPF enviado é o **da própria conta**;
+        2. esse CPF consta nas matrículas que esta universidade cadastrou.
+
+        A primeira é o que impede a escalada. O CPF não é segredo no Brasil —
+        circula em vazamentos e cadastros de todo tipo — então conferir apenas
+        contra a lista da faculdade transformaria o CPF em senha de acesso aos
+        comunicados internos dela. Com a conferência contra a conta, quem souber
+        o CPF de outra pessoa para no primeiro passo.
+
+        **Efeitos:** encerra o vínculo ativo anterior, se houver; cria o novo; e
+        marca a formação correspondente como verificada, **sem apagar** as
+        verificações antigas.
+      parameters:
+        - { name: universidadeId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cpf]
+              properties:
+                cpf:
+                  type: string
+                  description: Com ou sem pontuação; normalizado para dígitos.
+                  examples: ['123.456.789-00']
+      responses:
+        '201':
+          description: Vínculo criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vinculo' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403':
+          description: |
+            O CPF enviado não é o desta conta. Mensagem deliberadamente igual à
+            do `404` abaixo no que o usuário vê, para a resposta não revelar se
+            um CPF consta na lista de uma instituição.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                code: vinculo_recusado
+                message: 'Não encontramos esse CPF na lista desta instituição'
+        '404':
+          description: CPF não cadastrado por esta universidade
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                code: vinculo_recusado
+                message: 'Não encontramos esse CPF na lista desta instituição'
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /users/me/vinculo:
+    get:
+      tags: [vínculo]
+      summary: Vínculo ativo do usuário autenticado
+      operationId: getMeuVinculo
       responses:
         '200':
-          description: Página de resultados
+          description: O vínculo, ou `null` quando não há nenhum
           content:
             application/json:
               schema:
-                type: object
-                required: [itens]
-                properties:
-                  itens:
-                    type: array
-                    items: { $ref: '#/components/schemas/PerfilPublico' }
-                  proximoCursor:
-                    type: [string, 'null']
-                    description: Ausente ou nulo na última página.
+                oneOf:
+                  - { $ref: '#/components/schemas/Vinculo' }
+                  - { type: 'null' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
 
+    delete:
+      tags: [vínculo]
+      summary: Encerra o próprio vínculo
+      operationId: encerrarVinculo
+      description: |
+        O aluno sai quando quiser, sem depender da instituição. Sem isto, quem
+        trocou de faculdade e não foi removido da lista antiga ficaria preso
+        recebendo comunicado de onde não estuda mais.
+
+        A **formação segue verificada** — encerrar o vínculo não desfaz o fato de
+        ter estudado lá. Voltar a inserir o CPF recria o vínculo, se a matrícula
+        ainda existir.
+      responses:
+        '204': { description: Encerrado (idempotente — sem vínculo também responde 204) }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  # ─────────────────────────  instituições  ─────────────────────────
   /universidades:
     get:
       tags: [instituições]
       summary: Lista universidades
       operationId: listUniversidades
       description: |
-        Alimenta o `Select` da tela de cadastro. **Sem autenticação** — é
-        consultada antes de existir conta.
-
-        Depende de seed: sem universidades e cursos carregados, o cadastro não
-        fecha. Essa é a dependência mais fácil de descobrir tarde.
+        **Sem autenticação** — alimenta o combobox de formação na tela de
+        cadastro, antes de existir conta.
       security: []
       parameters:
-        - name: q
-          in: query
-          schema: { type: string }
-          description: Filtro por nome ou sigla.
+        - { name: q, in: query, schema: { type: string }, description: Filtro por nome ou sigla. }
       responses:
         '200':
-          description: Universidades disponíveis
+          description: Universidades
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Universidade' }
 
+  /universidades/{universidadeId}:
+    get:
+      tags: [instituições]
+      summary: Perfil público da universidade
+      operationId: getUniversidade
+      description: |
+        A tela que o aluno alcança pela busca. `temVinculo` diz se o leitor já
+        está vinculado — é o que decide se o menu oferece "inserir CPF" ou
+        "encerrar vínculo".
+      parameters:
+        - { name: universidadeId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Perfil da instituição
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PerfilDeUniversidade' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404':
+          description: Universidade não encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /universidades/{universidadeId}/cursos:
     get:
       tags: [instituições]
       summary: Cursos de uma universidade
       operationId: listCursos
+      description: |
+        Os cursos que a própria instituição cadastrou. Alimenta o segundo
+        combobox, habilitado depois de escolhida a universidade. **Sem
+        autenticação**, pelo mesmo motivo da rota acima.
       security: []
       parameters:
-        - name: universidadeId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+        - { name: universidadeId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         '200':
-          description: Cursos da instituição
+          description: Cursos
           content:
             application/json:
               schema:
@@ -193,57 +357,226 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
-  /users/me/avatar/upload-url:
+  /universidades/me/cursos:
+    get:
+      tags: [instituições]
+      summary: Cursos da própria instituição
+      operationId: listMeusCursos
+      description: Exige `tipo == faculdade` no token.
+      responses:
+        '200':
+          description: Cursos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Curso' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteFaculdade' }
+
     post:
-      tags: [arquivos]
-      summary: Emite URL pré-assinada para enviar a foto de perfil
-      operationId: createAvatarUploadUrl
-      description: |
-        O contrato entra na Sprint 1 e a implementação na Sprint 5, quando o
-        Object Storage subir — assim a tela de perfil é escrita uma vez só.
-
-        O cliente faz `PUT` do arquivo em `uploadUrl` **direto no storage**, sem
-        passar pelo serviço, e depois grava `fotoUrl` via `PATCH /users/me`.
-        Bytes de imagem nunca atravessam o user-service.
-
-        `profileImage` existia no `UserModel` do protótipo desde o começo, mas o
-        upload nunca foi implementado — o campo era sempre string vazia.
+      tags: [instituições]
+      summary: Cadastra um curso
+      operationId: criarCurso
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [contentType, tamanhoBytes]
+              required: [nome]
               properties:
-                contentType:
-                  type: string
-                  enum: [image/jpeg, image/png, image/webp]
-                tamanhoBytes:
-                  type: integer
-                  maximum: 5242880
-                  description: Máximo 5 MB.
+                nome: { type: string, maxLength: 200 }
       responses:
         '201':
-          description: URL emitida
+          description: Curso criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Curso' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteFaculdade' }
+        '409':
+          description: Já existe curso com este nome nesta instituição
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /universidades/me/cursos/{cursoId}:
+    delete:
+      tags: [instituições]
+      summary: Remove um curso
+      operationId: removerCurso
+      description: |
+        Responde `409` se o curso estiver em uso por matrícula, vínculo ou
+        formação. Apagar em cascata aqui removeria formação declarada de quem
+        não tem relação com a decisão administrativa da instituição.
+      parameters:
+        - { name: cursoId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Removido }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteFaculdade' }
+        '404':
+          description: Curso não encontrado nesta instituição
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Curso em uso
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /universidades/me/matriculas:
+    get:
+      tags: [instituições]
+      summary: Alunos cadastrados pela instituição
+      operationId: listMatriculas
+      description: |
+        A lista que a faculdade administra. Cada item diz se já foi reivindicada
+        e por quem — é como a secretaria vê quem já entrou no app.
+      parameters:
+        - { name: cursoId, in: query, schema: { type: string, format: uuid } }
+        - name: situacao
+          in: query
+          schema: { type: string, enum: [todas, pendentes, vinculadas], default: todas }
+      responses:
+        '200':
+          description: Matrículas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Matricula' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteFaculdade' }
+
+    post:
+      tags: [instituições]
+      summary: Cadastra um aluno por CPF
+      operationId: criarMatricula
+      description: |
+        A universidade não vai no corpo: é a do token.
+
+        **A matrícula pode ser criada antes de a conta existir.** É uma lista de
+        espera: o vínculo nasce quando alguém com aquele CPF reivindicar. Sem
+        isso, a secretaria só poderia cadastrar quem já tivesse baixado o app.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cpf, cursoId]
+              properties:
+                cpf: { type: string, examples: ['123.456.789-00'] }
+                cursoId: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Matrícula criada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Matricula' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteFaculdade' }
+        '409':
+          description: Este CPF já está cadastrado nesta instituição
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /universidades/me/matriculas/{matriculaId}:
+    delete:
+      tags: [instituições]
+      summary: Remove o aluno da instituição
+      operationId: removerMatricula
+      description: |
+        Remove a matrícula **e encerra o vínculo ativo**, se existir: o aluno
+        volta a ver apenas os posts públicos.
+
+        **A formação continua verificada.** O caso comum é o aluno ter se
+        formado ou trancado, e ele realmente estudou lá — apagar o selo
+        reescreveria o passado.
+      parameters:
+        - { name: matriculaId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Removida }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteFaculdade' }
+        '404':
+          description: Matrícula não encontrada nesta instituição
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ─────────────────────────────  busca  ─────────────────────────────
+  /busca:
+    get:
+      tags: [busca]
+      summary: Busca unificada de universidades, empresas e pessoas
+      operationId: buscar
+      description: |
+        A caixa de busca do cabeçalho. Uma consulta, resultados **agrupados por
+        tipo** — quem digita "fatec" não deveria escolher aba antes de saber se
+        achou.
+
+        Cada grupo traz no máximo `limitePorTipo` itens. Para a lista completa de
+        um tipo, `tipos` restringe a consulta.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2 }
+        - name: tipos
+          in: query
+          description: Restringe os grupos. Ausente busca em todos.
+          schema:
+            type: array
+            items: { type: string, enum: [universidades, empresas, pessoas] }
+        - name: limitePorTipo
+          in: query
+          schema: { type: integer, default: 5, maximum: 20 }
+      responses:
+        '200':
+          description: Resultados agrupados
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultadoDeBusca' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  /users:
+    get:
+      tags: [busca]
+      summary: Busca somente pessoas, paginada
+      operationId: searchUsers
+      description: |
+        A lista completa quando o usuário abre o grupo "Pessoas" da busca.
+        `ILIKE` com índice trigram, em vez do truque `isLessThan: '${termo}z'`
+        do protótipo, que só casava prefixo.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2 } }
+        - { name: universidadeId, in: query, schema: { type: string, format: uuid },
+            description: 'Filtra por VÍNCULO ativo, não por formação declarada.' }
+        - { name: cursoId, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 50 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Página de pessoas
           content:
             application/json:
               schema:
                 type: object
-                required: [uploadUrl, fotoUrl, expiraEm]
+                required: [itens]
                 properties:
-                  uploadUrl:
-                    type: string
-                    format: uri
-                    description: Aceita apenas `PUT` com o `contentType` declarado.
-                  fotoUrl:
-                    type: string
-                    format: uri
-                    description: URL definitiva, para gravar em `PATCH /users/me`.
-                  expiraEm: { type: string, format: date-time }
+                  itens:
+                    type: array
+                    items: { $ref: '#/components/schemas/PerfilPublico' }
+                  proximoCursor: { type: [string, 'null'] }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
-        '422': { $ref: '#/components/responses/ValidationError' }
 
+  # ────────────────────────────  seguir  ────────────────────────────
   /users/me/seguindo/universidades:
     get:
       tags: [seguir]
@@ -252,11 +585,10 @@ paths:
       description: |
         Alimenta o seletor de escopo do feed acadêmico.
 
-        **A universidade da própria afiliação sempre consta**, mesmo que nunca
-        tenha sido seguida explicitamente: ela não é opcional, e deixá-la de
-        fora faria o escopo "geral" excluir justamente a instituição do aluno.
-        Ela vem com `propria: true` para o cliente não oferecer "deixar de
-        seguir" nela.
+        **A universidade do vínculo ativo sempre consta**, com `propria: true`, e
+        não pode ser removida — deixá-la fora faria o escopo "geral" excluir a
+        instituição do próprio aluno. Uma conta **sem vínculo** pode ter esta
+        lista vazia, e é o estado normal de quem acabou de se cadastrar.
       responses:
         '200':
           description: Universidades seguidas
@@ -273,17 +605,12 @@ paths:
       summary: Passa a seguir uma universidade
       operationId: seguirUniversidade
       description: |
-        Idempotente: seguir de novo responde `204` sem erro.
+        Idempotente.
 
-        **Seguir não concede acesso a conteúdo restrito.** Quem segue uma
-        instituição sem ter vínculo com ela passa a ver apenas os posts de
-        visibilidade `publico`. Os `institucional` e `curso` continuam exigindo
-        afiliação — caso contrário seguir seria um botão de escalar privilégio.
+        **Seguir não concede acesso a conteúdo restrito** — só o vínculo faz
+        isso. Quem segue sem vínculo vê exclusivamente posts `publico`.
       parameters:
-        - name: universidadeId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+        - { name: universidadeId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         '204': { description: Passou a seguir }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
@@ -298,37 +625,28 @@ paths:
       summary: Deixa de seguir uma universidade
       operationId: deixarDeSeguirUniversidade
       parameters:
-        - name: universidadeId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+        - { name: universidadeId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         '204': { description: Deixou de seguir (idempotente) }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '409':
           description: |
-            Tentativa de deixar de seguir a própria universidade. O vínculo não
-            é uma escolha de feed: sair dele seria perder os comunicados que a
-            instituição dirige ao aluno.
+            É a universidade do vínculo ativo. Para deixar de acompanhá-la,
+            encerre o vínculo em `DELETE /users/me/vinculo`.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example:
-                code: universidade_propria
-                message: 'Você não pode deixar de seguir sua própria universidade'
+                code: universidade_do_vinculo
+                message: 'Encerre o vínculo antes de deixar de seguir esta instituição'
 
   /users/me/seguindo/usuarios:
     get:
       tags: [seguir]
       summary: Pessoas e empresas que o usuário segue
       operationId: listarUsuariosSeguidos
-      description: |
-        Sustenta o escopo "somente seguidos" do feed profissional.
       parameters:
-        - name: tipo
-          in: query
-          schema: { $ref: '#/components/schemas/TipoConta' }
-          description: Filtra por tipo de conta — só empresas, por exemplo.
+        - { name: tipo, in: query, schema: { $ref: '#/components/schemas/TipoConta' } }
       responses:
         '200':
           description: Contas seguidas
@@ -345,10 +663,7 @@ paths:
       summary: Passa a seguir uma pessoa ou empresa
       operationId: seguirUsuario
       parameters:
-        - name: userId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+        - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         '204': { description: Passou a seguir (idempotente) }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
@@ -368,13 +683,48 @@ paths:
       summary: Deixa de seguir uma pessoa ou empresa
       operationId: deixarDeSeguirUsuario
       parameters:
-        - name: userId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+        - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         '204': { description: Deixou de seguir (idempotente) }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  # ───────────────────────────  arquivos  ───────────────────────────
+  /users/me/avatar/upload-url:
+    post:
+      tags: [arquivos]
+      summary: Emite URL pré-assinada para enviar a foto de perfil
+      operationId: createAvatarUploadUrl
+      description: |
+        Implementação na Sprint 5, quando o Object Storage subir. O contrato
+        existe desde a Sprint 1 para a tela de perfil ser escrita uma vez só.
+
+        O cliente faz `PUT` do arquivo em `uploadUrl` direto no storage e depois
+        grava `fotoUrl` via `PATCH /users/me`. Bytes de imagem nunca atravessam
+        este serviço.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contentType, tamanhoBytes]
+              properties:
+                contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+                tamanhoBytes: { type: integer, maximum: 5242880 }
+      responses:
+        '201':
+          description: URL emitida
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [uploadUrl, fotoUrl, expiraEm]
+                properties:
+                  uploadUrl: { type: string, format: uri }
+                  fotoUrl: { type: string, format: uri }
+                  expiraEm: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
   /health:
     get:
@@ -383,40 +733,28 @@ paths:
       security: []
       responses:
         '200':
-          description: Serviço no ar e com o banco alcançável
+          description: No ar, com o banco alcançável
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Health' }
         '503':
-          description: Serviço no ar mas com dependência indisponível
+          description: No ar, com dependência indisponível
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Health' }
 
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
 
   schemas:
     TipoConta:
       type: string
       enum: [aluno, faculdade, empresa]
       description: |
-        `faculdade` publica no pilar Acadêmico; `empresa` publica vagas no
-        Profissional. Só `aluno` é criado por autocadastro — os outros dois são
-        provisionados manualmente enquanto não há fluxo de verificação
-        institucional.
-
-    Afiliacao:
-      type: object
-      required: [universidade, curso]
-      description: O vínculo que no protótipo eram duas strings soltas.
-      properties:
-        universidade: { $ref: '#/components/schemas/Universidade' }
-        curso: { $ref: '#/components/schemas/Curso' }
+        Só `aluno` nasce por autocadastro. `faculdade` e `empresa` são
+        provisionados à mão enquanto não há verificação institucional — e são os
+        únicos tipos sem CPF.
 
     Universidade:
       type: object
@@ -425,6 +763,144 @@ components:
         id: { type: string, format: uuid }
         nome: { type: string, examples: ['Faculdade de Tecnologia de Ribeirão Preto'] }
         sigla: { type: string, examples: ['FATEC RP'] }
+        temConta:
+          type: boolean
+          description: |
+            Se já existe conta institucional administrando esta universidade. O
+            perfil de uma sem conta não tem posts — e a tela diz isso, em vez de
+            mostrar um feed vazio sem explicação.
+
+    Curso:
+      type: object
+      required: [id, nome]
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string, examples: ['Análise e Desenvolvimento de Sistemas'] }
+
+    Formacao:
+      type: object
+      required: [id, universidade, curso, verificadaEm]
+      description: |
+        Uma linha do currículo. `verificadaEm` não nulo é o selo — e o cliente
+        mostra **apenas o selo**, sem rótulo algum nas não verificadas: a
+        ausência já comunica o suficiente.
+      properties:
+        id: { type: string, format: uuid }
+        universidade: { $ref: '#/components/schemas/Universidade' }
+        curso: { $ref: '#/components/schemas/Curso' }
+        verificadaEm:
+          type: [string, 'null']
+          format: date-time
+          description: Quando a instituição confirmou. `null` = apenas declarada.
+        criadoEm: { type: string, format: date-time }
+
+    Vinculo:
+      type: object
+      required: [universidade, curso, criadoEm]
+      description: |
+        O laço ativo. **No máximo um por usuário**, e o único que concede
+        visibilidade de posts `institucional` e `curso`.
+      properties:
+        universidade: { $ref: '#/components/schemas/Universidade' }
+        curso: { $ref: '#/components/schemas/Curso' }
+        criadoEm: { type: string, format: date-time }
+
+    Matricula:
+      type: object
+      required: [id, cpf, curso, criadoEm, vinculada]
+      description: Um aluno na lista da instituição.
+      properties:
+        id: { type: string, format: uuid }
+        cpf:
+          type: string
+          description: |
+            Apenas dígitos. Devolvido **só** à instituição que o cadastrou, que
+            é quem o digitou — nunca em resposta pública nem ao próprio aluno de
+            outra instituição.
+          examples: ['12345678900']
+        curso: { $ref: '#/components/schemas/Curso' }
+        vinculada:
+          type: boolean
+          description: '`true` quando alguém já reivindicou este CPF.'
+        usuario:
+          description: Quem reivindicou, quando houver.
+          oneOf:
+            - { $ref: '#/components/schemas/PerfilPublico' }
+            - { type: 'null' }
+        criadoEm: { type: string, format: date-time }
+
+    PerfilPublico:
+      type: object
+      required: [id, nomeCompleto, username, tipo, formacoes, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        nomeCompleto: { type: string }
+        username: { type: string }
+        tipo: { $ref: '#/components/schemas/TipoConta' }
+        formacoes:
+          type: array
+          description: Currículo visível. Pode estar vazio.
+          items: { $ref: '#/components/schemas/Formacao' }
+        vinculo:
+          description: |
+            Instituição atual, quando há. Público de propósito: é o equivalente
+            a "trabalha em" num perfil profissional.
+          oneOf:
+            - { $ref: '#/components/schemas/Vinculo' }
+            - { type: 'null' }
+        fotoUrl: { type: [string, 'null'], format: uri }
+        bio: { type: [string, 'null'], maxLength: 280 }
+        criadoEm: { type: string, format: date-time }
+
+    Perfil:
+      allOf:
+        - $ref: '#/components/schemas/PerfilPublico'
+        - type: object
+          required: [email]
+          description: |
+            O próprio perfil. **`cpf` e `cnpj` aparecem somente aqui** — nenhum dos
+            dois sai em resposta pública, nem mascarado.
+          properties:
+            email: { type: string, format: email }
+            cpf:
+              type: [string, 'null']
+              description: 'Apenas dígitos. Nulo em contas faculdade e empresa.'
+            cnpj:
+              type: [string, 'null']
+              description: |
+                Apenas dígitos. Nulo em contas de aluno. Uma conta nunca tem CPF e
+                CNPJ ao mesmo tempo.
+            ativadaEm:
+              type: [string, 'null']
+              format: date-time
+              description: |
+                Quando a conta passou a poder agir. **Nulo significa pendente**, e
+                só acontece em conta institucional: a de aluno nasce ativa.
+
+                Pendente, a instituição entra, edita o perfil e vê a própria
+                página — mas `POST` e `DELETE` em `/universidades/me/*` respondem
+                `403`. O cliente usa este campo para mostrar o aviso de análise.
+            telefone: { type: [string, 'null'] }
+            alteradoEm: { type: [string, 'null'], format: date-time }
+
+    PerfilDeUniversidade:
+      type: object
+      required: [id, nome, sigla, temVinculo, seguindo]
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string }
+        sigla: { type: string }
+        bio: { type: [string, 'null'], maxLength: 280 }
+        fotoUrl: { type: [string, 'null'], format: uri }
+        temVinculo:
+          type: boolean
+          description: |
+            Se o leitor tem vínculo ativo com esta instituição. Decide se o menu
+            oferece "inserir CPF" ou "encerrar vínculo".
+        seguindo: { type: boolean }
+        totalDeAlunos:
+          type: integer
+          description: Quantos têm vínculo ativo. Agregado, sem expor quem.
 
     UniversidadeSeguida:
       allOf:
@@ -434,58 +910,34 @@ components:
           properties:
             propria:
               type: boolean
-              description: |
-                `true` para a universidade da afiliação do usuário. Ela sempre
-                aparece na lista e não pode ser removida — o cliente esconde a
-                ação de deixar de seguir quando este campo é verdadeiro.
+              description: '`true` para a universidade do vínculo ativo; não removível.'
             seguidaEm: { type: [string, 'null'], format: date-time }
 
-    Curso:
+    ResultadoDeBusca:
       type: object
-      required: [id, nome]
+      required: [universidades, empresas, pessoas]
+      description: Grupos sempre presentes, possivelmente vazios.
       properties:
-        id: { type: string, format: uuid }
-        nome: { type: string, examples: ['Análise e Desenvolvimento de Sistemas'] }
-
-    PerfilPublico:
-      type: object
-      required: [id, nomeCompleto, username, tipo, afiliacao, criadoEm]
-      properties:
-        id: { type: string, format: uuid }
-        nomeCompleto: { type: string }
-        username: { type: string }
-        tipo: { $ref: '#/components/schemas/TipoConta' }
-        afiliacao: { $ref: '#/components/schemas/Afiliacao' }
-        fotoUrl: { type: [string, 'null'], format: uri }
-        bio: { type: [string, 'null'], maxLength: 280 }
-        criadoEm: { type: string, format: date-time }
-
-    Perfil:
-      allOf:
-        - $ref: '#/components/schemas/PerfilPublico'
-        - type: object
-          required: [email, telefone]
-          description: O próprio perfil, com os dados de contato que o público omite.
-          properties:
-            email: { type: string, format: email }
-            telefone: { type: string }
-            alteradoEm: { type: [string, 'null'], format: date-time }
+        universidades:
+          type: array
+          items: { $ref: '#/components/schemas/Universidade' }
+        empresas:
+          type: array
+          items: { $ref: '#/components/schemas/PerfilPublico' }
+        pessoas:
+          type: array
+          items: { $ref: '#/components/schemas/PerfilPublico' }
 
     AtualizarPerfilRequest:
       type: object
       minProperties: 1
-      description: Envie apenas os campos que mudaram.
+      description: 'Envie só o que mudou. `email` e `cpf` não são editáveis.'
       properties:
         nomeCompleto: { type: string }
         username: { type: string, minLength: 3, pattern: '^[a-zA-Z0-9_]+$' }
         telefone: { type: string, pattern: '^\(?\d{2}\)?[\s-]?\d{4,5}-?\d{4}$' }
         bio: { type: [string, 'null'], maxLength: 280 }
         fotoUrl: { type: [string, 'null'], format: uri }
-        universidadeId: { type: string, format: uuid }
-        cursoId:
-          type: string
-          format: uuid
-          description: Precisa pertencer à universidade vigente ou à enviada no mesmo PATCH.
 
     Health:
       type: object
@@ -518,6 +970,27 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           example: { code: nao_autenticado, message: 'Sessão expirada. Faça login novamente.' }
 
+    SomenteFaculdade:
+      description: |
+        A rota exige uma conta `faculdade`. As de escrita exigem também que ela
+        esteja **ativada** — uma conta pendente recebe `conta_pendente` aqui.
+
+        A checagem de ativação consulta o banco, não um claim do token: pôr o
+        estado no JWT faria uma conta desativada seguir publicando por até 15
+        minutos, o tempo de vida do access token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            tipoErrado:
+              value:
+                code: permissao_negada
+                message: 'Sua conta não tem permissão para esta ação'
+            pendente:
+              value:
+                code: conta_pendente
+                message: 'Sua instituição ainda está em análise. Você será avisado quando for ativada.'
+
     ValidationError:
       description: Falha de validação, com as mensagens do cliente
       content:
@@ -527,7 +1000,7 @@ components:
             code: validation_error
             message: 'Verifique os campos destacados'
             fields:
-              username: ['Username pode conter apenas letras, números e underscore']
+              cpf: ['CPF inválido']
 
 security:
   - bearerAuth: []
