@@ -18,11 +18,11 @@ from uuid import UUID
 from sqlalchemy import Select, and_, func, literal, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from academic_service import paginacao
 from academic_service.models import Comentario, Curtida, Post, Visibilidade
 from academic_service.schemas import EditarPostIn, PublicarPostIn
 from academic_service.usuarios import UniversidadeDaConta
 from academic_service.visibilidade import clausula_de_visibilidade
+from integra_shared import paginacao
 from integra_shared.errors import AppError
 from integra_shared.security import UsuarioAutenticado
 

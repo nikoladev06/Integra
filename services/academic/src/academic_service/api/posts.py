@@ -13,9 +13,9 @@ from academic_service.api.deps import (
     obter_instituicao_ativa,
 )
 from academic_service.models import Visibilidade
-from academic_service.paginacao import LIMITE_MAXIMO, LIMITE_PADRAO
 from academic_service.schemas import EditarPostIn, PaginaDePosts, PostOut, PublicarPostIn
 from academic_service.services import curtidas, posts
+from integra_shared.paginacao import LIMITE_MAXIMO, LIMITE_PADRAO
 from integra_shared.security import UsuarioAutenticado
 
 router = APIRouter(prefix="/academic", tags=["posts"])

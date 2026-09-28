@@ -11,8 +11,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from academic_service import paginacao
 from academic_service.main import app
+from integra_shared import paginacao
 from integra_shared.errors import AppError
 
 

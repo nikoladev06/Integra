@@ -37,13 +37,11 @@ porque o usuário conclui que não há nada publicado.
 
 from uuid import UUID
 
-import httpx
 from pydantic import BaseModel, Field
 
 from academic_service.settings import settings
-from integra_shared.errors import AppError
-
-_TEMPO_LIMITE = httpx.Timeout(10.0)
+from integra_shared import interno
+from integra_shared.interno import ResumoDePerfil as ResumoDeAutor
 
 
 class Curso(BaseModel):
@@ -93,70 +91,13 @@ class UniversidadeDaConta(ResumoDeUniversidade):
     conta_ativa: bool = Field(alias="contaAtiva")
 
 
-class ResumoDeAutor(BaseModel):
-    """Quem comentou: nome, arroba e foto, e nada além."""
-
-    id: UUID
-    nome_completo: str = Field(alias="nomeCompleto")
-    username: str
-    foto_url: str | None = Field(default=None, alias="fotoUrl")
-
-    model_config = {"populate_by_name": True}
-
-
-def _indisponivel() -> AppError:
-    """Mensagem única para timeout, conexão recusada e 5xx do user-service.
-
-    Para quem está na tela a ação é a mesma — tentar de novo —, e distinguir os
-    casos só serviria a quem estivesse mapeando a topologia interna.
-    """
-    return AppError(
-        code="dependencia_indisponivel",
-        message="Não foi possível carregar os dados agora. Tente novamente em instantes.",
-        status_code=503,
-    )
-
-
 async def _pedir(caminho: str, params: dict | None = None) -> object:
-    """Uma chamada interna ao user-service, com o segredo de serviço no cabeçalho.
+    """Uma chamada interna ao user-service, com as credenciais deste serviço.
 
-    Cada chamada abre e fecha o próprio cliente, como no auth-service. Um cliente
-    global economizaria o handshake, mas guardaria um pool preso ao event loop em
-    que nasceu — a mesma classe de problema que fez o conftest criar um engine por
-    teste.
+    O como (cabeçalho de serviço, tempo limite, tradução do erro) vive em
+    `integra_shared.interno`; o que se pede é o que este módulo decide.
     """
-    try:
-        async with httpx.AsyncClient(
-            base_url=settings.user_service_url, timeout=_TEMPO_LIMITE
-        ) as cliente:
-            resposta = await cliente.get(
-                caminho,
-                params=params,
-                headers={"X-Servico-Token": settings.servico_token},
-            )
-    except httpx.HTTPError as erro:
-        raise _indisponivel() from erro
-
-    if resposta.status_code == 200:
-        return resposta.json()
-
-    # 403 com `sem_instituicao` é caso de negócio, não de infraestrutura: é a
-    # conta `faculdade` que não administra universidade nenhuma. Repassar o código
-    # do user-service mantém a mensagem exata em vez de traduzi-la para um 503
-    # que mandaria o usuário "tentar de novo" num erro que não passa com o tempo.
-    try:
-        corpo = resposta.json()
-    except ValueError:
-        corpo = {}
-
-    if resposta.status_code in (403, 404):
-        raise AppError(
-            code=corpo.get("code", "permissao_negada"),
-            message=corpo.get("message", "Sua conta não tem permissão para esta ação"),
-            status_code=resposta.status_code,
-        )
-
-    raise _indisponivel()
+    return await interno.pedir(settings.user_service_url, settings.servico_token, caminho, params)
 
 
 async def universidade_da_conta(conta_id: UUID) -> UniversidadeDaConta:
@@ -189,9 +130,11 @@ async def resumos_de_universidades(ids: set[UUID]) -> dict[UUID, ResumoDeUnivers
 
 
 async def resumos_de_autores(ids: set[UUID]) -> dict[UUID, ResumoDeAutor]:
-    """Autores de comentário, em lote, indexados por id."""
-    if not ids:
-        return {}
-    dados = await _pedir("/users/interno/resumos", {"ids": [str(i) for i in ids]})
-    resumos = [ResumoDeAutor.model_validate(d) for d in dados]  # type: ignore[union-attr]
-    return {r.id: r for r in resumos}
+    """Autores de comentário, em lote, indexados por id.
+
+    Mesmo lote que o feed-service usa para os autores de post: a rota e o formato
+    são do user-service, então a chamada mora em `integra_shared.interno`.
+    """
+    return await interno.resumos_de_perfis(
+        settings.user_service_url, settings.servico_token, ids
+    )

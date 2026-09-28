@@ -13,10 +13,10 @@ from uuid import UUID
 from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from academic_service import paginacao
 from academic_service.models import Comentario, Post
 from academic_service.schemas import ComentarIn
 from academic_service.services import posts
+from integra_shared import paginacao
 from integra_shared.errors import AppError
 from integra_shared.security import UsuarioAutenticado
 
