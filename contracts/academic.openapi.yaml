@@ -1,0 +1,650 @@
+openapi: 3.1.0
+
+info:
+  title: Integra — academic-service
+  version: 1.1.0
+  description: |
+    Posts institucionais publicados por contas `faculdade`, com três níveis de
+    visibilidade, e curtidas e comentários de quem pode vê-los.
+
+    ## REGRA DE SEGURANÇA CENTRAL — quem concede acesso é o VÍNCULO, e só ele
+
+    | situação do leitor | `publico` | `institucional` | `curso` (o dele) | `curso` (outro) |
+    | --- | --- | --- | --- | --- |
+    | vínculo **ativo** com a universidade | vê | vê | vê | **não vê** |
+    | segue, sem vínculo | vê | **não vê** | **não vê** | **não vê** |
+    | nem segue nem tem vínculo | vê¹ | **não vê** | **não vê** | **não vê** |
+
+    ¹ pelo perfil da instituição (`/academic/universidades/{id}/posts`), não pelo
+    feed: o feed lista apenas universidades do vínculo e das seguidas.
+
+    ## Três coisas que não concedem nada, e que é fácil confundir com quem concede
+
+    1. **Formação declarada.** O usuário digita a faculdade que quiser, sem
+       verificação nenhuma. É cosmético.
+    2. **Formação verificada sem vínculo ativo.** Quem se formou, ou foi removido
+       pela instituição, mantém o selo e volta a ver apenas os públicos. O selo é
+       currículo, não credencial de acesso.
+    3. **Seguir.** Coloca a instituição no feed; não abre o conteúdo interno.
+
+    Na v0.2 do rascunho o acesso vinha da afiliação informada no cadastro — isto
+    é, do que o próprio usuário digitava. Era o modelo errado: bastava declarar
+    uma faculdade para ler os comunicados internos dela.
+
+    ## Onde a visibilidade é resolvida
+
+    **No serviço, na consulta**, a partir dos claims `vinculoUniversidadeId` e
+    `vinculoCursoId` do token. O cliente nunca recebe um post que não deveria ver
+    e depois filtra — isso transformaria a regra numa decoração de UI,
+    contornável por quem ler a resposta da API em vez da tela.
+
+    Vale para **leitura e escrita**: curtir e comentar exigem a mesma checagem de
+    quem pede o post. É o erro clássico — conferir visibilidade no `GET` e
+    esquecer no `POST /comentarios`, deixando o conteúdo do post vazar pela
+    resposta de erro ou pela contagem.
+
+    ## O que a Sprint 4 fechou, e que o rascunho deixava em aberto
+
+    - **Um curso por post, e não existe "turma".** `cursoId` é uma coluna com
+      valor único, não uma lista. A matriz acima vira uma comparação de igualdade,
+      e turma pode entrar depois sem invalidar nada do que existir.
+    - **A faculdade edita o post publicado, inclusive o alcance** (`PATCH`). O
+      preço está anotado na descrição da rota: quem já leu não é avisado da
+      mudança. `editadoEm` fica no registro e a tela mostra "editado".
+    - **Post `publico` não entra no feed de quem não segue.** `escopo` escolhe
+      quais universidades entram — o conjunto sai do vínculo e da lista de
+      seguidas, nunca do que o cliente pedir. Os públicos das outras aparecem no
+      perfil da instituição, alcançado pela busca.
+
+    ## v1.1 — as três abas do perfil da instituição
+
+    O perfil de uma universidade passou a ter três abas, no formato que o Instagram
+    usa para separar posts, reels e marcações: **geral** (os públicos),
+    **institucional** e **por curso**. Cada aba é uma chamada a
+    `GET /academic/universidades/{id}/posts` com `visibilidade` diferente.
+
+    O parâmetro é **filtro de apresentação**, e a distinção importa: ele estreita o
+    que a matriz de visibilidade já autorizou, e nunca amplia. Um leitor sem
+    vínculo que peça `visibilidade=curso` recebe lista vazia — não os restritos.
+    É por isso que este filtro pode vir do cliente, ao contrário do vínculo, que
+    vem do token justamente para não poder.
+
+servers:
+  - url: https://api.integra.app
+    description: produção (Oracle Cloud, atrás do Traefik)
+  - url: http://localhost:8080
+    description: desenvolvimento local (gateway do docker compose)
+
+tags:
+  - name: posts
+    description: |
+      Comunicados institucionais. Quem publica é a conta `faculdade` **ativada**;
+      quem lê é qualquer conta, filtrada pela matriz de visibilidade.
+  - name: curtidas
+  - name: comentários
+    description: |
+      Só quem pode VER o post pode comentar. Mesmo formato de comentário que o
+      `feed-service` reusa na Sprint 5.
+
+paths:
+  # ─────────────────────────────  posts  ─────────────────────────────
+  /academic/posts:
+    get:
+      tags: [posts]
+      summary: Feed institucional do usuário autenticado
+      operationId: listPosts
+      description: |
+        O parâmetro `escopo` corresponde ao seletor no topo da tela:
+
+          geral  (padrão)  a universidade do vínculo + todas as seguidas
+          minha            só a universidade do vínculo ativo
+
+        Sem vínculo, `minha` responde lista vazia — não é erro, é o estado de
+        quem ainda não informou o CPF em nenhuma instituição. A tela mostra o
+        caminho: buscar a faculdade e inserir o CPF.
+
+        `escopo` escolhe **quais universidades** entram, nunca **qual conteúdo**:
+        a matriz de visibilidade vale igual nos dois casos. Não existe parâmetro
+        de universidade arbitrária — o conjunto sai do vínculo e da lista de
+        seguidas.
+
+        Consequência de desenho que vale registrar: `escopo=minha` é atendido
+        **inteiramente a partir do token**, sem chamar o user-service. Com o
+        user-service fora do ar, o feed da própria instituição continua
+        respondendo e só o `geral` degrada.
+      parameters:
+        - name: escopo
+          in: query
+          schema: { type: string, enum: [geral, minha], default: geral }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: cursor
+          in: query
+          description: |
+            `proximoCursor` da página anterior. Opaco: codifica a data e o id do
+            último item, e não um deslocamento — com `OFFSET`, um post novo
+            publicado entre duas páginas repetiria um item na segunda.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página do feed, do mais recente para o mais antigo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaDePosts' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+    post:
+      tags: [posts]
+      summary: Publica um post institucional
+      operationId: createPost
+      description: |
+        Exige conta `faculdade` **ativada**; aluno recebe 403, e instituição
+        pendente também (`conta_pendente`).
+
+        A universidade do post é **a do autor** — não é um campo do corpo. Aceitar
+        `universidadeId` do cliente permitiria a uma faculdade publicar no nome de
+        outra.
+
+        `cursoId` é obrigatório quando `visibilidade == curso`, e precisa ser um
+        curso **desta** instituição. Nos outros dois níveis ele é recusado, em vez
+        de ignorado: um `cursoId` aceito em silêncio num post `institucional`
+        pareceria uma restrição que não existe.
+
+        `visibilidade` é obrigatória e **sem valor padrão no servidor**. O
+        formulário do cliente pré-seleciona `institucional`, mas o serviço não
+        adivinha — um default aqui faria uma chamada malformada publicar com
+        alcance que ninguém escolheu.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PublicarPostRequest' }
+      responses:
+        '201':
+          description: Publicado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteFaculdade' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /academic/posts/{postId}:
+    parameters:
+      - { name: postId, in: path, required: true, schema: { type: string, format: uuid } }
+
+    get:
+      tags: [posts]
+      summary: Detalhe de um post
+      operationId: getPost
+      description: |
+        Sujeito à mesma matriz de visibilidade do feed, e **não** limitado ao
+        escopo: um post `publico` de uma universidade que o leitor não segue é
+        legível por id, porque é assim que o perfil da instituição o abre.
+      responses:
+        '200':
+          description: O post
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/PostNaoVisivel' }
+
+    patch:
+      tags: [posts]
+      summary: Edita um post publicado (só a faculdade autora)
+      operationId: updatePost
+      description: |
+        Campos omitidos ficam inalterados. Aceita **inclusive a mudança de
+        alcance**, e isso foi uma decisão consciente, com um custo que fica
+        anotado aqui: quem já leu o post não é avisado de que ele mudou, e um post
+        restrito a um curso pode passar a público depois de lido por aquele curso.
+
+        As invariantes do `POST` continuam valendo na edição, e é o que impede a
+        edição de produzir um estado que a publicação recusaria:
+
+        - passar a `visibilidade: curso` exige `cursoId` desta instituição —
+          informado agora ou já presente no post;
+        - sair de `curso` para `publico` ou `institucional` **limpa** `cursoId`,
+          em vez de deixar uma restrição órfã no registro;
+        - `universidadeId` e `autorId` não são editáveis e não existem no corpo.
+
+        `editadoEm` passa a não nulo, e a tela mostra "editado" ao lado da data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EditarPostRequest' }
+      responses:
+        '200':
+          description: Post atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteFaculdade' }
+        '404': { $ref: '#/components/responses/PostNaoVisivel' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+    delete:
+      tags: [posts]
+      summary: Remove um post (só a faculdade autora)
+      operationId: deletePost
+      description: |
+        Remove curtidas e comentários junto, por `ON DELETE CASCADE`. Não há
+        remoção lógica: um comunicado apagado não deve seguir legível por quem
+        conhecer o id.
+      responses:
+        '204': { description: Removido }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteFaculdade' }
+        '404': { $ref: '#/components/responses/PostNaoVisivel' }
+
+  # ────────────────────────────  curtidas  ────────────────────────────
+  /academic/posts/{postId}/curtidas:
+    parameters:
+      - { name: postId, in: path, required: true, schema: { type: string, format: uuid } }
+
+    put:
+      tags: [curtidas]
+      summary: Curte o post
+      operationId: likePost
+      description: |
+        Idempotente: curtir duas vezes responde 204 nas duas, e a contagem sobe
+        uma vez. `PUT` em vez de `POST` justamente por isso — o método já diz que
+        repetir não acumula, sem o servidor ter que ler corpo para decidir.
+
+        Exige poder **ver** o post: sem isso, a contagem de curtidas de um post
+        restrito seria alterável por quem não pode lê-lo.
+      responses:
+        '204': { description: Curtido }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/PostNaoVisivel' }
+
+    delete:
+      tags: [curtidas]
+      summary: Descurte o post
+      operationId: unlikePost
+      description: Idempotente. Descurtir o que não estava curtido responde 204.
+      responses:
+        '204': { description: Descurtido }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/PostNaoVisivel' }
+
+  # ───────────────────────────  comentários  ───────────────────────────
+  /academic/posts/{postId}/comentarios:
+    parameters:
+      - { name: postId, in: path, required: true, schema: { type: string, format: uuid } }
+
+    get:
+      tags: [comentários]
+      summary: Lista os comentários do post
+      operationId: listComments
+      description: Do mais antigo para o mais novo — conversa se lê na ordem em que aconteceu.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página de comentários
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaDeComentarios' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/PostNaoVisivel' }
+
+    post:
+      tags: [comentários]
+      summary: Comenta o post
+      operationId: createComment
+      description: |
+        **Só quem pode ver o post pode comentar.** Vale dizer explícito porque é
+        o erro clássico: checar visibilidade na leitura e esquecer na escrita — e
+        aí um post restrito a um curso recebe comentário de quem não tem vínculo,
+        que os outros leem.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ComentarRequest' }
+      responses:
+        '201':
+          description: Comentado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comentario' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/PostNaoVisivel' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /academic/comentarios/{comentarioId}:
+    delete:
+      tags: [comentários]
+      summary: Remove um comentário
+      operationId: deleteComment
+      description: |
+        Autor do comentário, ou a faculdade autora do post — ela moderar o que
+        aparece sob o comunicado dela é o mínimo, e sem isso a única saída seria
+        apagar o post inteiro.
+      parameters:
+        - { name: comentarioId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Removido }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404':
+          description: |
+            Comentário inexistente, ou de outra pessoa sob post que não é seu. A
+            mesma resposta para os dois casos: distinguir "não existe" de "não é
+            seu" confirmaria a existência de comentários em posts que o leitor não
+            alcança.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ──────────────  posts de uma universidade (perfil dela)  ──────────────
+  /academic/universidades/{universidadeId}/posts:
+    get:
+      tags: [posts]
+      summary: Posts de uma universidade, para o perfil dela
+      operationId: listPostsByUniversity
+      description: |
+        O que alimenta as abas do perfil da instituição, alcançado pela busca.
+        **Mesma matriz de visibilidade**: para quem não tem vínculo aqui, só os
+        `publico` — e é exatamente o que a tela promete a quem ainda não informou
+        o CPF.
+
+        Existe separada do feed porque o feed é limitado ao vínculo e às seguidas;
+        esta rota é o caminho de quem chegou pela busca, sem seguir nem ter
+        vínculo, e ainda assim tem direito aos públicos.
+
+        ## `visibilidade` é filtro de apresentação, não de autorização
+
+        O perfil da instituição tem **três abas** — geral, institucional e por
+        curso —, e cada uma é uma chamada com `visibilidade` diferente. Sem o
+        parâmetro, as três abas dividiriam uma lista paginada só, e a segunda
+        página de uma delas viria misturada com as das outras.
+
+        **O filtro nunca amplia o que se vê.** A matriz de visibilidade continua
+        valendo por cima dele: pedir `visibilidade=curso` sem vínculo naquele
+        curso devolve lista vazia, não os posts restritos. Filtro estreita o que
+        a matriz já autorizou — e é por isso que ele pode vir do cliente, ao
+        contrário do vínculo, que vem do token.
+      parameters:
+        - { name: universidadeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: visibilidade
+          in: query
+          description: |
+            Ausente devolve todos os alcances que o leitor alcança, que é o que a
+            aba "geral" mostraria se ela não fosse só de públicos. As abas passam
+            um valor cada.
+          schema: { $ref: '#/components/schemas/Visibilidade' }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página de posts daquela universidade
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaDePosts' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  /health:
+    get:
+      summary: Liveness e readiness
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: No ar, com o banco alcançável
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+        '503':
+          description: No ar, com dependência indisponível
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
+  schemas:
+    Visibilidade:
+      type: string
+      enum: [publico, institucional, curso]
+      description: |
+        | valor | quem vê |
+        | --- | --- |
+        | `publico` | qualquer usuário autenticado |
+        | `institucional` | apenas quem tem **vínculo ativo** com esta universidade |
+        | `curso` | apenas quem tem vínculo ativo **neste curso** dela |
+
+        Não há nível "só a instituição": um rascunho que a faculdade guarda para
+        si seria outra entidade, com outro ciclo de vida, e não um post com
+        alcance zero.
+
+    InstituicaoDoPost:
+      type: object
+      required: [id, nome, sigla]
+      description: |
+        A universidade que publicou, resolvida **na leitura** a partir de
+        `universidadeId` — não copiada para dentro do post na publicação.
+
+        O protótipo denormalizava `nomeCompleto` dentro de cada post, e o nome
+        envelhecia junto: trocar o nome não alcançava o que já estava publicado.
+        O custo desta escolha é uma consulta ao user-service por página de feed,
+        em lote para todas as universidades da página.
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string, examples: ['Faculdade de Tecnologia de Ribeirão Preto'] }
+        sigla: { type: string, examples: ['FATEC RP'] }
+        fotoUrl: { type: [string, 'null'] }
+
+    Curso:
+      type: object
+      required: [id, nome]
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string, examples: ['Análise e Desenvolvimento de Sistemas'] }
+
+    AutorDeComentario:
+      type: object
+      required: [id, nomeCompleto, username]
+      description: |
+        Quem comentou. Resumo, e não `PerfilPublico` inteiro: o card do
+        comentário mostra nome, arroba e foto, e arrastar formações e vínculo
+        para cá faria o serviço de posts depender do formato de perfil completo.
+      properties:
+        id: { type: string, format: uuid }
+        nomeCompleto: { type: string }
+        username: { type: string }
+        fotoUrl: { type: [string, 'null'] }
+
+    Post:
+      type: object
+      required:
+        [id, instituicao, visibilidade, conteudo, totalDeCurtidas, totalDeComentarios,
+         curtidoPorMim, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        instituicao: { $ref: '#/components/schemas/InstituicaoDoPost' }
+        visibilidade: { $ref: '#/components/schemas/Visibilidade' }
+        curso:
+          oneOf:
+            - { $ref: '#/components/schemas/Curso' }
+            - { type: 'null' }
+          description: |
+            Presente **somente** quando `visibilidade == curso`. É o curso a que
+            o post está restrito, e a tela o mostra como etiqueta ao lado do
+            alcance — o aluno precisa saber que aquilo não é público.
+        conteudo: { type: string, maxLength: 2000 }
+        totalDeCurtidas: { type: integer, minimum: 0 }
+        totalDeComentarios: { type: integer, minimum: 0 }
+        curtidoPorMim:
+          type: boolean
+          description: |
+            Estado **por leitor**, calculado na consulta. Não é campo do
+            registro: o protótipo guardava `isLiked` dentro do post, e com isso a
+            curtida de uma pessoa aparecia para todas.
+        podeEditar:
+          type: boolean
+          description: |
+            Se o leitor é a conta autora. Evita a tela inferir permissão
+            comparando ids — e inferir errado num caso que o servidor recusaria.
+        criadoEm: { type: string, format: date-time }
+        editadoEm:
+          type: [string, 'null']
+          format: date-time
+          description: Não nulo depois de um `PATCH`. A tela mostra "editado".
+
+    Comentario:
+      type: object
+      required: [id, postId, autor, conteudo, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        postId: { type: string, format: uuid }
+        autor: { $ref: '#/components/schemas/AutorDeComentario' }
+        conteudo: { type: string, maxLength: 1000 }
+        podeRemover:
+          type: boolean
+          description: Se o leitor é o autor do comentário ou a faculdade autora do post.
+        criadoEm: { type: string, format: date-time }
+
+    PublicarPostRequest:
+      type: object
+      required: [conteudo, visibilidade]
+      properties:
+        conteudo: { type: string, minLength: 1, maxLength: 2000 }
+        visibilidade: { $ref: '#/components/schemas/Visibilidade' }
+        cursoId:
+          type: [string, 'null']
+          format: uuid
+          description: |
+            Obrigatório se `visibilidade == curso`; recusado nos outros dois
+            níveis. Precisa ser curso desta instituição — de outra responde 422,
+            e não 404, porque o campo é que está errado.
+
+    EditarPostRequest:
+      type: object
+      description: |
+        Ao menos um campo. Corpo vazio responde 422: um `PATCH` que não muda nada
+        marcaria `editadoEm` sem nenhuma edição, e a tela passaria a exibir
+        "editado" num post intacto.
+      properties:
+        conteudo: { type: string, minLength: 1, maxLength: 2000 }
+        visibilidade: { $ref: '#/components/schemas/Visibilidade' }
+        cursoId: { type: [string, 'null'], format: uuid }
+
+    ComentarRequest:
+      type: object
+      required: [conteudo]
+      properties:
+        conteudo: { type: string, minLength: 1, maxLength: 1000 }
+
+    PaginaDePosts:
+      type: object
+      required: [itens]
+      properties:
+        itens:
+          type: array
+          items: { $ref: '#/components/schemas/Post' }
+        proximoCursor: { type: [string, 'null'] }
+
+    PaginaDeComentarios:
+      type: object
+      required: [itens]
+      properties:
+        itens:
+          type: array
+          items: { $ref: '#/components/schemas/Comentario' }
+        proximoCursor: { type: [string, 'null'] }
+
+    Health:
+      type: object
+      required: [status, service]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        service: { type: string, examples: ['academic-service'] }
+        version: { type: string }
+        dependencies:
+          type: object
+          additionalProperties: { type: string, enum: [ok, unreachable] }
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        fields:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+  responses:
+    NaoAutenticado:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: nao_autenticado, message: 'Sessão expirada. Faça login novamente.' }
+
+    SomenteFaculdade:
+      description: |
+        A rota exige uma conta `faculdade` **ativada**, e — em editar e apagar —
+        que ela seja a autora do post.
+
+        A checagem de ativação consulta o banco do user-service, não um claim do
+        token: pôr o estado no JWT faria uma conta desativada seguir publicando
+        por até 15 minutos, o tempo de vida do access token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            tipoErrado:
+              value:
+                code: permissao_negada
+                message: 'Sua conta não tem permissão para esta ação'
+            pendente:
+              value:
+                code: conta_pendente
+                message: 'Sua instituição ainda está em análise. Você será avisado quando for ativada.'
+
+    PostNaoVisivel:
+      description: |
+        Post inexistente **ou** fora do alcance do leitor — a mesma resposta para
+        os dois casos, de propósito.
+
+        Um 403 aqui confirmaria que existe um comunicado restrito naquele id, e
+        transformaria a rota numa sonda: iterando ids, alguém sem vínculo mapearia
+        quantos posts internos uma faculdade tem e quando publica. O status
+        diferente não ajudaria quem depura o suficiente para pagar isso.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: nao_encontrado, message: 'Post não encontrado' }
+
+    ValidationError:
+      description: Falha de validação, com as mensagens do cliente
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: validation_error
+            message: 'Verifique os campos destacados'
+            fields:
+              cursoId: ['Escolha o curso a que o post fica restrito']
+
+security:
+  - bearerAuth: []

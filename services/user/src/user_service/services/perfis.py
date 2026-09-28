@@ -5,11 +5,13 @@ regras testáveis sem subir o FastAPI e impede que a mesma checagem seja escrita
 de dois jeitos em rotas diferentes.
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from integra_shared.cpf import normalizar as normalizar_cpf
 from integra_shared.errors import AppError
@@ -219,3 +221,35 @@ async def email_em_uso(sessao: AsyncSession, email: str) -> bool:
 async def _cpf_em_uso(sessao: AsyncSession, cpf: str) -> bool:
     consulta = select(func.count()).select_from(Usuario).where(Usuario.cpf == cpf)
     return bool((await sessao.execute(consulta)).scalar_one())
+
+
+# ───────────────────  resumos para outro serviço  ───────────────────
+
+
+async def resumos_de_universidades(sessao: AsyncSession, ids: Sequence[UUID]) -> list[Universidade]:
+    """As universidades pedidas, em lote.
+
+    Uma consulta para a página inteira do feed, e não uma por post: com 20 posts
+    de 3 instituições, a versão ingênua faria 20 idas ao banco para montar 3
+    cabeçalhos. Ids desconhecidos simplesmente não aparecem na resposta — quem
+    chamou pediu resumos, não garantia de existência.
+    """
+    if not ids:
+        return []
+    resultado = await sessao.execute(
+        select(Universidade)
+        .where(Universidade.id.in_(list(ids)))
+        # `selectinload`, e não o lazy padrão: sem ele cada universidade da lista
+        # dispara a própria consulta de cursos ao ser serializada — o N+1 dentro
+        # da função que existe justamente para evitar N+1.
+        .options(selectinload(Universidade.cursos))
+    )
+    return list(resultado.scalars())
+
+
+async def resumos_de_usuarios(sessao: AsyncSession, ids: Sequence[UUID]) -> list[Usuario]:
+    """Os autores pedidos, em lote. Mesmo raciocínio de `resumos_de_universidades`."""
+    if not ids:
+        return []
+    resultado = await sessao.execute(select(Usuario).where(Usuario.id.in_(list(ids))))
+    return list(resultado.unique().scalars())

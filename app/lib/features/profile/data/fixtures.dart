@@ -1,3 +1,5 @@
+import 'package:integra/features/academic/data/models/post.dart';
+import 'package:integra/features/profile/data/banco_falso.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
 
 /// Dados de exemplo para o app rodar sem backend.
@@ -23,6 +25,22 @@ abstract final class Fixtures {
   /// declarada ganhar o selo.
   static const emailSemVinculo = 'bruno@exemplo.com';
   static const senhaSemVinculo = 'integra123';
+
+  /// A conta da FATEC: `faculdade` **ativada**. É com ela que se publica
+  /// comunicado, cadastra curso e matricula aluno.
+  ///
+  /// Nomeada, e não escrita à mão onde é usada, porque três lugares precisam dela
+  /// — a dica do login, os testes de administração e os do feed — e um literal
+  /// repetido em três arquivos é o que faz renomear a conta virar caça ao erro.
+  static const emailFaculdade = 'contato@fatecrp.edu.br';
+
+  /// A conta de empresa, **pendente**. Serve para ver o aviso de análise e as
+  /// recusas que ele explica.
+  static const emailEmpresa = 'rh@orbita.com.br';
+
+  /// Uma segunda aluna, com vínculo em outro curso da mesma faculdade. É o que
+  /// distingue "não publicaram nada" de "não é do seu curso".
+  static const emailOutroCurso = 'carla@exemplo.com';
 
   // ---------------------------- instituições ----------------------------
 
@@ -130,7 +148,7 @@ abstract final class Fixtures {
     username: 'carlar',
     tipo: TipoConta.aluno,
     criadoEm: DateTime.utc(2026, 2, 20),
-    email: 'carla@exemplo.com',
+    email: emailOutroCurso,
     cpf: cpfCarla,
     telefone: '(16)97777-0000',
     formacoes: [
@@ -156,7 +174,7 @@ abstract final class Fixtures {
     username: 'fatec_rp',
     tipo: TipoConta.faculdade,
     criadoEm: DateTime.utc(2026, 1, 10),
-    email: 'contato@fatecrp.edu.br',
+    email: emailFaculdade,
     cnpj: cnpjFatec,
     telefone: '(16)3333-0000',
     bio: 'Faculdade de Tecnologia de Ribeirão Preto.',
@@ -171,7 +189,7 @@ abstract final class Fixtures {
     username: 'orbita_tech',
     tipo: TipoConta.empresa,
     criadoEm: DateTime.utc(2026, 5, 4),
-    email: 'rh@orbita.com.br',
+    email: emailEmpresa,
     cnpj: cnpjEmpresa,
     telefone: '(16)3222-1111',
     bio: 'Software house em Ribeirão Preto.',
@@ -189,17 +207,77 @@ abstract final class Fixtures {
   static Map<String, String> get senhas => {
     emailDemo: senhaDemo,
     emailSemVinculo: senhaSemVinculo,
-    'carla@exemplo.com': senhaDemo,
-    'contato@fatecrp.edu.br': senhaDemo,
-    'rh@orbita.com.br': senhaDemo,
+    emailOutroCurso: senhaDemo,
+    emailFaculdade: senhaDemo,
+    emailEmpresa: senhaDemo,
   };
 
   /// As matrículas que a FATEC cadastrou: CPF e curso, **sem conta de usuário
   /// atrelada**. É assim no banco também — a faculdade matricula quem ainda não
   /// tem conta, e o encontro acontece quando o aluno insere o CPF.
-  static const matriculas = <(String universidadeId, String cpf, String cursoId)>[
-    ('uni-fatec-rp', cpfAna, 'curso-ads'),
-    ('uni-fatec-rp', cpfBruno, 'curso-ads'),
-    ('uni-fatec-rp', cpfCarla, 'curso-gestao'),
-  ];
+  static const matriculas =
+      <(String universidadeId, String cpf, String cursoId)>[
+        ('uni-fatec-rp', cpfAna, 'curso-ads'),
+        ('uni-fatec-rp', cpfBruno, 'curso-ads'),
+        ('uni-fatec-rp', cpfCarla, 'curso-gestao'),
+      ];
+
+  /// universidade → conta `faculdade` que a administra.
+  ///
+  /// No banco é `universidades.conta_id`. A USP não aparece aqui de propósito:
+  /// ela existe no catálogo, pode ser seguida e declarada, e **não publica** —
+  /// é o estado de toda universidade semeada sem ninguém a operando.
+  static const contasInstitucionais = <String, String>{
+    'uni-fatec-rp': 'user-fatec',
+  };
+
+  // ------------------------------- comunicados -------------------------------
+
+  /// Os posts de exemplo do pilar Acadêmico, um por alcance.
+  ///
+  /// Os três existem para a demonstração mostrar a **diferença** que o modelo da
+  /// v2 produz: entrando como Bruno (sem vínculo) aparece só o público; entrando
+  /// como Ana (vínculo em ADS) aparecem os três; como Carla (vínculo em Gestão),
+  /// dois — o restrito a ADS não é dela.
+  ///
+  /// Recebe o gerador de id do [BancoFalso] em vez de trazer ids fixos: o post é
+  /// a primeira entidade que o app **cria** em quantidade, e id fixo colidiria
+  /// com o do primeiro post publicado na sessão.
+  static List<PostFalso> posts(String Function(String prefixo) proximoId) {
+    final agora = DateTime.utc(2026, 9, 20, 10);
+
+    return [
+      PostFalso(
+        id: proximoId('post'),
+        universidadeId: fatecRp.id,
+        autorId: perfilFatec.id,
+        visibilidade: Visibilidade.publico,
+        conteudo:
+            'Inscrições abertas para o processo seletivo do próximo semestre. '
+            'As provas acontecem no campus e o edital está no site da unidade.',
+        criadoEm: agora,
+      ),
+      PostFalso(
+        id: proximoId('post'),
+        universidadeId: fatecRp.id,
+        autorId: perfilFatec.id,
+        visibilidade: Visibilidade.institucional,
+        conteudo:
+            'A biblioteca funcionará em horário reduzido na próxima semana, das '
+            '9h às 16h, por causa do inventário anual do acervo.',
+        criadoEm: agora.add(const Duration(hours: 3)),
+      ),
+      PostFalso(
+        id: proximoId('post'),
+        universidadeId: fatecRp.id,
+        autorId: perfilFatec.id,
+        visibilidade: Visibilidade.curso,
+        cursoId: ads.id,
+        conteudo:
+            'A entrega do projeto integrador de ADS foi remarcada para o dia 30. '
+            'O repositório precisa estar público até as 23h59.',
+        criadoEm: agora.add(const Duration(hours: 6)),
+      ),
+    ];
+  }
 }

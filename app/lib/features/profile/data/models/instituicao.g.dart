@@ -14,7 +14,6 @@ _PerfilDeUniversidade _$PerfilDeUniversidadeFromJson(
   sigla: json['sigla'] as String,
   temVinculo: json['temVinculo'] as bool,
   seguindo: json['seguindo'] as bool,
-  totalDeAlunos: (json['totalDeAlunos'] as num?)?.toInt() ?? 0,
   bio: json['bio'] as String?,
   fotoUrl: json['fotoUrl'] as String?,
 );
@@ -27,7 +26,6 @@ Map<String, dynamic> _$PerfilDeUniversidadeToJson(
   'sigla': instance.sigla,
   'temVinculo': instance.temVinculo,
   'seguindo': instance.seguindo,
-  'totalDeAlunos': instance.totalDeAlunos,
   'bio': instance.bio,
   'fotoUrl': instance.fotoUrl,
 };
@@ -54,6 +52,27 @@ Map<String, dynamic> _$UniversidadeSeguidaToJson(
   'temConta': instance.temConta,
   'seguidaEm': instance.seguidaEm?.toIso8601String(),
 };
+
+_Matricula _$MatriculaFromJson(Map<String, dynamic> json) => _Matricula(
+  id: json['id'] as String,
+  cpf: json['cpf'] as String,
+  curso: Curso.fromJson(json['curso'] as Map<String, dynamic>),
+  criadoEm: DateTime.parse(json['criadoEm'] as String),
+  vinculada: json['vinculada'] as bool? ?? false,
+  usuario: json['usuario'] == null
+      ? null
+      : Perfil.fromJson(json['usuario'] as Map<String, dynamic>),
+);
+
+Map<String, dynamic> _$MatriculaToJson(_Matricula instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'cpf': instance.cpf,
+      'curso': instance.curso,
+      'criadoEm': instance.criadoEm.toIso8601String(),
+      'vinculada': instance.vinculada,
+      'usuario': instance.usuario,
+    };
 
 _ResultadoDeBusca _$ResultadoDeBuscaFromJson(Map<String, dynamic> json) =>
     _ResultadoDeBusca(

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from secrets import compare_digest
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from integra_shared.cpf import normalizar as normalizar_cpf
@@ -146,13 +146,6 @@ async def encerrar_por_instituicao(sessao: AsyncSession, universidade_id: UUID, 
             Vinculo.universidade_id == universidade_id,
         )
     )
-
-
-async def total_de_alunos(sessao: AsyncSession, universidade_id: UUID) -> int:
-    consulta = (
-        select(func.count()).select_from(Vinculo).where(Vinculo.universidade_id == universidade_id)
-    )
-    return int((await sessao.execute(consulta)).scalar_one())
 
 
 async def _marcar_formacao_verificada(

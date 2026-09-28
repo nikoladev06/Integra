@@ -1,9 +1,9 @@
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'package:integra/core/storage/token_storage.dart';
 import 'package:integra/features/profile/data/fixtures.dart';
+import 'package:integra/features/profile/data/models/perfil.dart';
 
 import '../../../helpers/bombear_app.dart';
 import '../../../helpers/localizadores.dart';
@@ -103,13 +103,40 @@ void main() {
       expect(find.text(Fixtures.perfilSemVinculo.nomeCompleto), findsOne);
     });
 
-    testWidgets('a credencial de exemplo aparece no modo de fixtures', (
+    testWidgets('as quatro contas de exemplo aparecem no modo de fixtures', (
       tester,
     ) async {
       await bombearApp(tester);
 
       expect(find.text('Modo de demonstração'), findsOne);
+
+      // **As quatro, e não só as de aluno.** O login sempre foi um só para os três
+      // tipos de conta — o tipo pertence à conta, não à forma de entrar —, mas a
+      // dica listava apenas os dois alunos. Resultado: quem quisesse testar como
+      // faculdade não tinha como descobrir o e-mail dela.
       expect(find.textContaining(Fixtures.emailDemo), findsOne);
+      expect(find.textContaining(Fixtures.emailSemVinculo), findsOne);
+      expect(find.textContaining(Fixtures.emailFaculdade), findsOne);
+      expect(find.textContaining(Fixtures.emailEmpresa), findsOne);
+    });
+
+    testWidgets('a conta de faculdade entra pelo mesmo formulário', (
+      tester,
+    ) async {
+      // Não há "entrar como faculdade": um formulário só, e o tipo vem da conta.
+      // Este teste é o que prova que a dica acima não promete o que não funciona.
+      final banco = await bombearApp(tester);
+
+      await preencherEEnviar(
+        tester,
+        email: Fixtures.emailFaculdade,
+        senha: Fixtures.senhaDemo,
+      );
+
+      expect(banco.usuarioAtual.tipo, TipoConta.faculdade);
+      // E já entra podendo publicar: a FATEC das fixtures nasce ativada.
+      expect(banco.usuarioAtual.ativadaEm, isNotNull);
+      expect(find.byIcon(LucideIcons.squarePen), findsOne);
     });
 
     testWidgets('token guardado abre direto no app, sem passar pelo login', (
@@ -147,12 +174,16 @@ void main() {
       // O perfil veio do repositório, atravessando sessão → repositório → banco
       // → tela. É esta asserção que prova a costura ponta a ponta.
       expect(find.text(Fixtures.perfilDemo.nomeCompleto), findsOne);
+
+      // O vínculo mora na aba de currículo, que não é a aberta por padrão — o
+      // perfil abre nas publicações, como no Instagram.
+      await tester.tap(find.byTooltip('Currículo'));
+      await tester.pumpAndSettle();
       expect(find.text('Vínculo institucional'), findsOne);
 
-      // O botão está no fim de um ListView, e item fora da viewport não é
-      // construído — daí rolar em vez de procurar direto.
-      await tester.ensureVisible(find.text('Sair da conta'));
-      await tester.pumpAndSettle();
+      // Sair saiu do corpo da tela e foi para o menu do canto: com as abas, as
+      // ações de conta não pertenceriam nem às publicações nem ao currículo.
+      await abrirMenuDaConta(tester);
       await tester.tap(find.text('Sair da conta'));
       await tester.pumpAndSettle();
 

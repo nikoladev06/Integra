@@ -1,6 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 import 'package:integra/features/profile/data/models/perfil.dart';
+import 'package:integra/shared/domain/documentos.dart';
 
 part 'instituicao.freezed.dart';
 part 'instituicao.g.dart';
@@ -18,12 +19,17 @@ abstract class PerfilDeUniversidade with _$PerfilDeUniversidade {
     required String sigla,
 
     /// Se o leitor tem vínculo ativo com esta instituição. Decide se o menu
-    /// oferece "inserir CPF" ou "encerrar vínculo".
+    /// oferece "inserir CPF" ou "encerrar vínculo", e o texto do vazio de cada aba
+    /// restrita.
+    ///
+    /// **Não aparece como selo na tela.** "Você tem vínculo aqui" era redundante: o
+    /// menu e as abas já respondem a mesma pergunta onde ela é feita.
     required bool temVinculo,
     required bool seguindo,
 
-    /// Quantos têm vínculo ativo. Agregado, sem expor quem.
-    @Default(0) int totalDeAlunos,
+    // Não há contagem de alunos. Ela existiu até o contrato de `user` 2.1.0 e saiu
+    // da **resposta da API**, não só daqui: quantos alunos uma faculdade tem no
+    // Integra é informação dela.
     String? bio,
     String? fotoUrl,
   }) = _PerfilDeUniversidade;
@@ -54,6 +60,47 @@ abstract class UniversidadeSeguida with _$UniversidadeSeguida {
 extension UniversidadeSeguidaX on UniversidadeSeguida {
   Universidade get universidade =>
       Universidade(id: id, nome: nome, sigla: sigla, temConta: temConta);
+}
+
+/// Um aluno na lista de matrículas da instituição.
+///
+/// Espelha `components.schemas.Matricula`. Duas coisas a notar, e as duas são do
+/// modelo e não da tela:
+///
+/// [cpf] vem **só para a instituição que o cadastrou** — foi ela que o digitou.
+/// Nunca aparece em resposta pública nem para outra instituição.
+///
+/// [usuario] é nulo enquanto ninguém reivindicou aquele CPF. É o caso comum: a
+/// faculdade matricula quem **ainda não tem conta**, e o encontro acontece quando
+/// a pessoa informa o CPF no perfil dela. Por isso não existe chave estrangeira
+/// para usuário no banco — o CPF é o único elo.
+@freezed
+abstract class Matricula with _$Matricula {
+  const factory Matricula({
+    required String id,
+    required String cpf,
+    required Curso curso,
+    required DateTime criadoEm,
+
+    /// Se já existe conta com este CPF **e vínculo ativo** aqui.
+    @Default(false) bool vinculada,
+    Perfil? usuario,
+  }) = _Matricula;
+
+  factory Matricula.fromJson(Map<String, dynamic> json) =>
+      _$MatriculaFromJson(json);
+}
+
+extension MatriculaX on Matricula {
+  /// CPF formatado para leitura da secretaria: `000.000.000-00`.
+  ///
+  /// Sem máscara parcial. Mascarar o CPF **nesta** tela seria teatro: a
+  /// instituição digitou o número, e esconder um dígito não protege de quem já o
+  /// tem — só dificulta conferir a lista.
+  String get cpfFormatado => formatarCpf(cpf);
+
+  /// Aguardando a pessoa informar o CPF no perfil da instituição.
+  bool get pendente => !vinculada;
 }
 
 /// Resultado de `GET /busca` — a busca do cabeçalho.

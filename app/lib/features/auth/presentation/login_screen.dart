@@ -38,10 +38,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _enviando = true);
 
     try {
-      await ref.read(sessaoProvider.notifier).entrar(
-        email: (valores['email'] as String?)?.trim() ?? '',
-        senha: valores['senha'] as String? ?? '',
-      );
+      await ref
+          .read(sessaoProvider.notifier)
+          .entrar(
+            email: (valores['email'] as String?)?.trim() ?? '',
+            senha: valores['senha'] as String? ?? '',
+          );
       // Sem navegação aqui: o `redirect` do roteador observa a sessão e move o
       // usuário sozinho. Navegar à mão daqui competiria com a guarda.
     } on FalhaDeValidacao catch (falha) {
@@ -158,15 +160,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
 
                     const SizedBox(height: Espaco.md),
-                    // A recuperação de senha saiu do escopo, e a tela diz isso
-                    // em vez de oferecer um link que não leva a nada.
-                    Text(
-                      'Esqueceu a senha? Procure a secretaria da sua '
-                      'instituição — a redefinição por e-mail ainda não está '
-                      'disponível.',
-                      style: tema.textTheme.muted,
-                      textAlign: TextAlign.center,
-                    ),
+                    // Não há aviso sobre senha esquecida. A recuperação por
+                    // e-mail está fora do escopo (o `auth-service` não emite token
+                    // de reset), e anunciar a ausência era pior que o silêncio:
+                    // ocupava a tela de entrada para dizer o que não existe, a
+                    // quem ainda não tinha tido problema nenhum.
 
                     const _AvisoDeFixtures(),
                   ],
@@ -183,6 +181,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
 /// Mostra a credencial de exemplo quando o app roda sem backend.
 ///
+/// Uma conta de exemplo, com o que ela demonstra.
+///
+/// O e-mail é selecionável: num teste de caixa preta quem lê a dica precisa
+/// digitá-lo no campo acima, e copiar erra menos que transcrever.
+class _Conta extends StatelessWidget {
+  const _Conta({required this.email, required this.descricao});
+
+  final String email;
+  final String descricao;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = ShadTheme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: Espaco.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText(
+            email,
+            style: tema.textTheme.small.copyWith(
+              color: tema.colorScheme.primary,
+            ),
+          ),
+          Text(descricao, style: tema.textTheme.muted),
+        ],
+      ),
+    );
+  }
+}
+
 /// Só aparece no modo de fixtures — em produção não existe conta de exemplo, e
 /// o widget desaparece junto com ela.
 class _AvisoDeFixtures extends StatelessWidget {
@@ -202,13 +232,39 @@ class _AvisoDeFixtures extends StatelessWidget {
             Text('Modo de demonstração', style: tema.textTheme.small),
             const SizedBox(height: Espaco.xs),
             Text(
-              'Sem backend conectado. Duas contas de exemplo, senha '
-              '${Fixtures.senhaDemo} nas duas:\n\n'
-              '${Fixtures.emailDemo} — com vínculo e formação verificada.\n\n'
-              '${Fixtures.emailSemVinculo} — formação declarada, sem vínculo. '
-              'Busque a FATEC RP e informe o CPF '
-              '${formatarCpf(Fixtures.cpfBruno)} para ver o selo nascer.',
+              'Sem backend conectado. Quatro contas de exemplo, senha '
+              '${Fixtures.senhaDemo} em todas.',
               style: tema.textTheme.muted,
+            ),
+            const SizedBox(height: Espaco.sm),
+
+            // O login é **um só** para os três tipos de conta: o tipo pertence à
+            // conta, não à forma de entrar, então não há seletor de "entrar como
+            // faculdade". Era o que faltava aqui — a conta da FATEC sempre
+            // funcionou, e ninguém tinha como descobrir o e-mail dela.
+            const _Conta(
+              email: Fixtures.emailDemo,
+              descricao: 'Aluna com vínculo ativo e formação verificada.',
+            ),
+            _Conta(
+              email: Fixtures.emailSemVinculo,
+              descricao:
+                  'Aluno que só declarou a formação, sem vínculo. Busque a FATEC '
+                  'RP e informe o CPF ${formatarCpf(Fixtures.cpfBruno)} para ver '
+                  'o selo nascer.',
+            ),
+            const _Conta(
+              email: Fixtures.emailFaculdade,
+              descricao:
+                  'A FATEC RP — conta de faculdade, já ativada. Publica pelo '
+                  'botão de escrever no cabeçalho, e cadastra curso e matrícula '
+                  'em Perfil › Administração da instituição.',
+            ),
+            const _Conta(
+              email: Fixtures.emailEmpresa,
+              descricao:
+                  'Empresa pendente de ativação: entra e edita o perfil, mas não '
+                  'publica nem matricula.',
             ),
           ],
         ),

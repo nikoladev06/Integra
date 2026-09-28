@@ -9,113 +9,246 @@ import 'package:integra/core/theme/tokens.dart';
 import 'package:integra/features/auth/presentation/sessao_controller.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
 import 'package:integra/features/profile/presentation/widgets/formacoes_e_vinculo.dart';
-import 'package:integra/shared/domain/documentos.dart';
+import 'package:integra/shared/widgets/abas_de_icone.dart';
 import 'package:integra/shared/widgets/cabecalho_integra.dart';
+import 'package:integra/shared/widgets/estado_vazio.dart';
+
+/// As duas partes do perfil de uma pessoa.
+///
+/// A divisão é a do perfil da instituição, e por um motivo comum: um perfil junta
+/// duas coisas de naturezas diferentes — **o que a pessoa publicou** e **quem ela
+/// é** —, e numa lista única a segunda empurra a primeira para fora da tela.
+enum AbaDoPerfil { posts, curriculo }
 
 /// Perfil do usuário autenticado.
 ///
 /// É a tela que **prova a costura ponta a ponta**: os dados vêm do
 /// `ProfileRepository`, que é o falso sobre o banco em memória ou o
-/// `ApiProfileRepository` contra o `user-service`, e esta tela não muda na
-/// troca.
+/// `ApiProfileRepository` contra o `user-service`, e esta tela não muda na troca.
 ///
-/// A diferença visível em relação à v1 é a separação em dois cartões. Antes
-/// havia um só, "Vínculo institucional", que mostrava a afiliação declarada — o
-/// que dava a entender que declarar era pertencer. Agora são duas coisas com
-/// cartões, textos e consequências diferentes.
-class PerfilScreen extends ConsumerWidget {
+/// ## O que mudou de lugar, e por quê
+///
+/// **As ações saíram do corpo e foram para o menu do canto.** Editar perfil, trocar
+/// senha e sair eram três botões empilhados no fim da lista, o que fazia o conteúdo
+/// do perfil competir com a administração da conta pelo mesmo espaço. Com as abas,
+/// eles não teriam onde morar: não pertencem nem aos posts nem ao currículo.
+///
+/// **O cartão "Conta" saiu inteiro**, e foi para a tela de edição. E-mail, telefone
+/// e CPF são dados que se lê quando se vai mexer neles; no perfil eles ocupavam o
+/// lugar do que o perfil é para mostrar. O CPF continua com a explicação de por que
+/// não é editável — só agora ela aparece onde a pergunta surge.
+///
+/// **O menu só existe no próprio perfil.** Quando houver tela de perfil de outra
+/// pessoa, o cabeçalho dela é o comum — com mensagens no canto direito, porque ali
+/// a ação é falar com quem se está vendo, e não administrar a própria conta.
+class PerfilScreen extends ConsumerStatefulWidget {
   const PerfilScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tema = ShadTheme.of(context);
+  ConsumerState<PerfilScreen> createState() => _PerfilScreenState();
+}
+
+class _PerfilScreenState extends ConsumerState<PerfilScreen> {
+  AbaDoPerfil _aba = AbaDoPerfil.posts;
+
+  @override
+  Widget build(BuildContext context) {
+    final cores = ShadTheme.of(context).colorScheme;
     final perfil = ref.watch(perfilAtualProvider);
 
     if (perfil == null) {
-      // O roteador já impede chegar aqui sem sessão; isto cobre o instante
-      // entre o logout e a troca de rota.
+      // O roteador já impede chegar aqui sem sessão; isto cobre o instante entre o
+      // logout e a troca de rota.
       return const Scaffold(body: SizedBox.shrink());
     }
 
+    // Organização não tem currículo: empresa e faculdade não estudam em lugar
+    // nenhum, e uma aba vazia por definição seria pior que aba nenhuma. Os
+    // comunicados de uma faculdade aparecem no perfil público dela, alcançado pela
+    // busca — e é para lá que a aba de posts aponta.
+    final temCurriculo = !perfil.tipo.eInstitucional;
+
     return Scaffold(
-      appBar: const CabecalhoIntegra(titulo: 'Perfil'),
-      body: ListView(
-        padding: const EdgeInsets.all(Espaco.md),
-        children: [
-          if (perfil.aguardandoAtivacao) ...[
-            const _AvisoDeAnalise(),
-            const SizedBox(height: Espaco.md),
-          ],
-
-          _Cabecalho(perfil: perfil),
-          const SizedBox(height: Espaco.md),
-
-          // A ordem importa: quem lê o perfil de cima para baixo encontra o
-          // currículo e só então o que ele concede — que é nada, e o cartão
-          // seguinte diz isso.
-          if (!perfil.tipo.eInstitucional) ...[
-            CartaoDeFormacoes(formacoes: perfil.formacoes),
-            const SizedBox(height: Espaco.md),
-            CartaoDeVinculo(vinculo: perfil.vinculo),
-            const SizedBox(height: Espaco.md),
-          ],
-
-          _CartaoDeContato(perfil: perfil),
-          const SizedBox(height: Espaco.lg),
-
-          ShadButton.outline(
-            leading: const Icon(LucideIcons.pencil, size: 16),
-            onPressed: () => context.push(Rotas.editarPerfil),
-            child: const Text('Editar perfil'),
+      body: CustomScrollView(
+        slivers: [
+          CabecalhoIntegra(
+            // O menu ocupa o canto direito em vez de mensagens: neste perfil a ação
+            // é sobre a **própria conta**, e mandar mensagem para si não existe.
+            direita: _MenuDaConta(perfil: perfil),
           ),
-          const SizedBox(height: Espaco.sm),
-          ShadButton.outline(
-            leading: const Icon(LucideIcons.keyRound, size: 16),
-            onPressed: () => context.push(Rotas.trocarSenha),
-            child: const Text('Trocar senha'),
+
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              Espaco.md,
+              Espaco.md,
+              Espaco.md,
+              0,
+            ),
+            sliver: SliverList.list(
+              children: [
+                if (perfil.aguardandoAtivacao) ...[
+                  const _AvisoDeAnalise(),
+                  const SizedBox(height: Espaco.md),
+                ],
+                _Identificacao(perfil: perfil),
+                const SizedBox(height: Espaco.md),
+              ],
+            ),
           ),
-          const SizedBox(height: Espaco.sm),
-          ShadButton.outline(
-            leading: const Icon(LucideIcons.logOut, size: 16),
-            onPressed: () => ref.read(sessaoProvider.notifier).sair(),
-            child: const Text('Sair da conta'),
-          ),
-          const SizedBox(height: Espaco.md),
-          Text(
-            'Não há recuperação de senha por e-mail: a troca exige a senha '
-            'atual e acontece dentro do app.',
-            style: tema.textTheme.muted,
-            textAlign: TextAlign.center,
-          ),
+
+          if (temCurriculo)
+            AbasDeIcone<AbaDoPerfil>(
+              selecionada: _aba,
+              cor: cores.primary,
+              aoTrocar: (aba) => setState(() => _aba = aba),
+              abas: const [
+                (
+                  valor: AbaDoPerfil.posts,
+                  icone: LucideIcons.layoutGrid,
+                  rotulo: 'Publicações',
+                ),
+                (
+                  valor: AbaDoPerfil.curriculo,
+                  icone: LucideIcons.graduationCap,
+                  rotulo: 'Currículo',
+                ),
+              ],
+            ),
+
+          if (!temCurriculo)
+            const _Conteudo(child: _PostsDaInstituicao())
+          else
+            switch (_aba) {
+              AbaDoPerfil.posts => const _Conteudo(child: _PostsDaPessoa()),
+              AbaDoPerfil.curriculo => _Conteudo(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // A ordem importa: quem lê de cima para baixo encontra o
+                    // currículo e só então o que ele concede — que é nada, e o
+                    // cartão seguinte diz isso.
+                    CartaoDeFormacoes(formacoes: perfil.formacoes),
+                    const SizedBox(height: Espaco.md),
+                    CartaoDeVinculo(vinculo: perfil.vinculo),
+                  ],
+                ),
+              ),
+            },
         ],
       ),
     );
   }
 }
 
-/// A conta institucional entrou, mas ainda não pode agir.
-///
-/// O aviso lê `ativadaEm` do perfil — **o banco**, não um claim do token. Pôr o
-/// estado no JWT faria uma conta desativada seguir publicando por até 15
-/// minutos, o tempo de vida do access token.
-class _AvisoDeAnalise extends StatelessWidget {
-  const _AvisoDeAnalise();
+class _Conteudo extends StatelessWidget {
+  const _Conteudo({required this.child});
+
+  final Widget child;
 
   @override
-  Widget build(BuildContext context) {
-    return const ShadAlert(
-      icon: Icon(LucideIcons.clock),
-      title: Text('Conta em análise'),
-      description: Text(
-        'Você pode editar o perfil normalmente. Publicar e cadastrar alunos '
-        'liberam quando a ativação sair.',
+  Widget build(BuildContext context) => SliverPadding(
+    padding: const EdgeInsets.all(Espaco.md),
+    sliver: SliverToBoxAdapter(child: child),
+  );
+}
+
+/// O menu de conta, no canto direito do cabeçalho.
+///
+/// As quatro ações que se fazem **sobre a própria conta**, e não sobre o que ela
+/// publicou. A administração da instituição entra aqui pelo mesmo critério das
+/// outras três: é ação de conta, e com as abas não teria onde morar no corpo.
+class _MenuDaConta extends ConsumerWidget {
+  const _MenuDaConta({required this.perfil});
+
+  final Perfil perfil;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return MenuAnchor(
+      builder: (context, controlador, _) => Tooltip(
+        message: 'Opções da conta',
+        child: ShadIconButton.ghost(
+          icon: const Icon(LucideIcons.menu, size: 20),
+          onPressed: () =>
+              controlador.isOpen ? controlador.close() : controlador.open(),
+        ),
       ),
+      menuChildren: [
+        // Aparece para toda conta `faculdade`, **inclusive a pendente**: a tela de
+        // lá explica por que ainda não pode agir, e esconder o caminho deixaria a
+        // conta em análise sem saber que ele existe.
+        if (perfil.tipo == TipoConta.faculdade)
+          MenuItemButton(
+            leadingIcon: const Icon(LucideIcons.settings, size: 16),
+            onPressed: () => context.push(Rotas.administracao),
+            child: const Text('Administração da instituição'),
+          ),
+        MenuItemButton(
+          leadingIcon: const Icon(LucideIcons.pencil, size: 16),
+          onPressed: () => context.push(Rotas.editarPerfil),
+          child: const Text('Editar perfil'),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(LucideIcons.keyRound, size: 16),
+          onPressed: () => context.push(Rotas.trocarSenha),
+          child: const Text('Trocar senha'),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(LucideIcons.logOut, size: 16),
+          onPressed: () => ref.read(sessaoProvider.notifier).sair(),
+          child: const Text('Sair da conta'),
+        ),
+      ],
     );
   }
 }
 
-class _Cabecalho extends StatelessWidget {
-  const _Cabecalho({required this.perfil});
+/// As publicações de uma pessoa. Não existem ainda.
+class _PostsDaPessoa extends StatelessWidget {
+  const _PostsDaPessoa();
+
+  @override
+  Widget build(BuildContext context) => const EstadoVazio(
+    icone: LucideIcons.layoutGrid,
+    titulo: 'Você ainda não publicou nada',
+    // Vazio honesto: posts de pessoa são do `feed-service`, que entra na Sprint 5.
+    // Uma grade de exemplos esconderia que o serviço não existe.
+    descricao:
+        'Seus posts no feed profissional aparecem aqui. O serviço que os guarda '
+        'entra na Sprint 5 — até lá, o botão de publicar no rodapé mostra o que '
+        'já dá para publicar.',
+  );
+}
+
+/// As publicações de uma conta institucional: existem, mas moram noutro lugar.
+class _PostsDaInstituicao extends StatelessWidget {
+  const _PostsDaInstituicao();
+
+  @override
+  Widget build(BuildContext context) {
+    final cores = ShadTheme.of(context).colorScheme;
+
+    return EstadoVazio(
+      icone: LucideIcons.megaphone,
+      cor: cores.academico,
+      titulo: 'Seus comunicados ficam no perfil da instituição',
+      // Aponta em vez de duplicar: os comunicados já têm uma tela, com as três abas
+      // por alcance, e listá-los aqui também criaria dois lugares para manter.
+      descricao:
+          'Eles aparecem no feed Acadêmico de quem tem vínculo, e no perfil '
+          'público da instituição — separados por alcance: geral, interno e por '
+          'curso. Publique pelo botão do rodapé.',
+    );
+  }
+}
+
+/// Nome, arroba, tipo de conta e bio. O bloco que responde "quem é esta conta".
+///
+/// Chamava-se `_Cabecalho` e foi renomeado quando o cabeçalho da tela passou a ser
+/// o `CabecalhoIntegra`: dois "cabeçalhos" no mesmo arquivo, um deles sem relação
+/// com o outro, é confusão garantida na próxima leitura.
+class _Identificacao extends StatelessWidget {
+  const _Identificacao({required this.perfil});
 
   final Perfil perfil;
 
@@ -172,63 +305,22 @@ class _Cabecalho extends StatelessWidget {
   }
 }
 
-class _CartaoDeContato extends StatelessWidget {
-  const _CartaoDeContato({required this.perfil});
-
-  final Perfil perfil;
-
-  @override
-  Widget build(BuildContext context) {
-    final tema = ShadTheme.of(context);
-
-    return ShadCard(
-      title: const Text('Conta'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: Espaco.sm),
-          // Só o próprio perfil traz contato e documento; o público omite os
-          // dois, por contrato — nem mascarados.
-          _Linha(rotulo: 'E-mail', valor: perfil.email ?? 'não disponível'),
-          _Linha(rotulo: 'Telefone', valor: perfil.telefone ?? 'não informado'),
-          if (perfil.cpf != null)
-            _Linha(rotulo: 'CPF', valor: formatarCpf(perfil.cpf!)),
-          if (perfil.cnpj != null)
-            _Linha(rotulo: 'CNPJ', valor: formatarCnpj(perfil.cnpj!)),
-          const SizedBox(height: Espaco.sm),
-          if (perfil.cpf != null)
-            Text(
-              'O CPF não é editável e não aparece para mais ninguém: é a chave '
-              'que liga sua conta à lista de alunos da instituição.',
-              style: tema.textTheme.muted,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Linha extends StatelessWidget {
-  const _Linha({required this.rotulo, required this.valor});
-
-  final String rotulo;
-  final String valor;
+/// A conta institucional entrou, mas ainda não pode agir.
+///
+/// O aviso lê `ativadaEm` do perfil — **o banco**, não um claim do token. Pôr o
+/// estado no JWT faria uma conta desativada seguir publicando por até 15 minutos, o
+/// tempo de vida do access token.
+class _AvisoDeAnalise extends StatelessWidget {
+  const _AvisoDeAnalise();
 
   @override
   Widget build(BuildContext context) {
-    final tema = ShadTheme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: Espaco.xs),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 96,
-            child: Text(rotulo, style: tema.textTheme.muted),
-          ),
-          Expanded(child: Text(valor, style: tema.textTheme.small)),
-        ],
+    return const ShadAlert(
+      icon: Icon(LucideIcons.clock),
+      title: Text('Conta em análise'),
+      description: Text(
+        'Você pode editar o perfil normalmente. Publicar e cadastrar alunos '
+        'ficam disponíveis quando a instituição for ativada.',
       ),
     );
   }

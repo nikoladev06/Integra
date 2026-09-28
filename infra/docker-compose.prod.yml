@@ -51,3 +51,14 @@ services:
       - traefik.http.routers.user-health.rule=Host(`${DOMINIO}`) && Path(`/health/user`)
       - traefik.http.routers.user-health.entrypoints=websecure
       - traefik.http.routers.user-health.tls.certresolver=le
+
+  academic:
+    environment:
+      INTEGRA_AMBIENTE: producao
+    labels:
+      - traefik.http.routers.academic.rule=Host(`${DOMINIO}`) && PathPrefix(`/academic`)
+      - traefik.http.routers.academic.entrypoints=websecure
+      - traefik.http.routers.academic.tls.certresolver=le
+      - traefik.http.routers.academic-health.rule=Host(`${DOMINIO}`) && Path(`/health/academic`)
+      - traefik.http.routers.academic-health.entrypoints=websecure
+      - traefik.http.routers.academic-health.tls.certresolver=le

@@ -72,8 +72,10 @@ class PerfilDeUniversidadeOut(_Saida):
     tem_vinculo: bool
     seguindo: bool
 
-    # Agregado, sem expor quem: quantos têm vínculo ativo.
-    total_de_alunos: int
+    # Não há contagem de alunos aqui. Ela existiu até a v2.1 e saiu por decisão de
+    # produto: quantos alunos uma faculdade tem no Integra é informação dela. Saiu
+    # do **schema**, e não só da tela — o campo que o cliente não exibe continua
+    # legível para quem ler a resposta.
 
 
 # ────────────────────────  formação e vínculo  ────────────────────────
@@ -257,3 +259,64 @@ class ResultadoDeBuscaOut(_Saida):
     universidades: list[UniversidadeOut] = Field(default_factory=list)
     empresas: list[PerfilPublicoOut] = Field(default_factory=list)
     pessoas: list[PerfilPublicoOut] = Field(default_factory=list)
+
+
+# ───────────────────  rotas internas (serviço a serviço)  ───────────────────
+#
+# Fora do OpenAPI público: não são parte do contrato que o cliente Flutter
+# consome, e o guarda de deriva as ignora pelo mesmo motivo. Existem porque o
+# `academic-service` precisa de três coisas que o user-service é dono, e
+# copiá-las para o schema dele seria denormalizar entre serviços — o erro que o
+# protótipo cometeu ao gravar `nomeCompleto` dentro de cada post.
+
+
+class ResumoDeUniversidadeOut(_Saida):
+    """O cabeçalho de um card de post: quem publicou.
+
+    Resolvido na LEITURA, em lote por página de feed, e não copiado para dentro
+    do post na publicação. O custo é uma chamada por página; o ganho é que
+    renomear uma instituição alcança o que já está publicado.
+    """
+
+    id: UUID
+    nome: str
+    sigla: str
+    foto_url: str | None = None
+
+    # Os cursos vêm junto, e não numa segunda chamada, por um motivo que o
+    # academic-service expõe: um post restrito a curso só é visível a quem tem
+    # vínculo naquele curso, então o nome que ele precisa exibir é sempre de um
+    # curso desta universidade. Pedir a lista à parte seria uma ida a mais ao
+    # banco para montar uma etiqueta. A lista já é pública em
+    # `GET /universidades/{id}/cursos` — não há nada aqui que o catálogo não diga.
+    cursos: list[CursoOut] = Field(default_factory=list)
+
+
+class UniversidadeDaContaOut(ResumoDeUniversidadeOut):
+    """O que o `academic-service` precisa saber para deixar alguém publicar.
+
+    Acrescenta ao resumo a única coisa que só a publicação precisa: se a conta
+    está ativada. A universidade do autor (que **não** é campo do corpo do post,
+    senão uma faculdade publicaria no nome de outra) e os cursos válidos para
+    restringir um post já vêm do resumo.
+
+    `conta_ativa` sai do BANCO, não de um claim do token. É a mesma razão de
+    `exigir_faculdade_ativa`: no JWT, uma conta desativada seguiria publicando
+    por até 15 minutos.
+    """
+
+    conta_ativa: bool
+
+
+class ResumoDePerfilOut(_Saida):
+    """Quem comentou: nome, arroba e foto, e nada além.
+
+    `PerfilPublicoOut` traria formações e vínculo para um card de comentário que
+    não os mostra — e faria o serviço de posts depender do formato de perfil
+    completo para renderizar uma linha de texto.
+    """
+
+    id: UUID
+    nome_completo: str
+    username: str
+    foto_url: str | None = None

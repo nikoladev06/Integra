@@ -3,13 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:integra/features/academic/presentation/academico_screen.dart';
+import 'package:integra/features/academic/presentation/compor_post_screen.dart';
+import 'package:integra/features/academic/presentation/post_screen.dart';
 import 'package:integra/features/auth/presentation/cadastro_instituicao_screen.dart';
 import 'package:integra/features/auth/presentation/cadastro_screen.dart';
 import 'package:integra/features/auth/presentation/login_screen.dart';
 import 'package:integra/features/auth/presentation/sessao_controller.dart';
+import 'package:integra/features/institution/presentation/administracao_screen.dart';
+import 'package:integra/features/messages/presentation/mensagens_screen.dart';
 import 'package:integra/features/institution/presentation/perfil_de_universidade_screen.dart';
 import 'package:integra/features/professional/presentation/profissional_screen.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
+import 'package:integra/features/publishing/presentation/publicar_screen.dart';
 import 'package:integra/features/profile/presentation/editar_perfil_screen.dart';
 import 'package:integra/features/profile/presentation/perfil_screen.dart';
 import 'package:integra/features/profile/presentation/trocar_senha_screen.dart';
@@ -28,6 +33,8 @@ abstract final class Rotas {
   static const cadastroDeEmpresa = '/cadastro/empresa';
 
   static const academico = '/academico';
+  static const comporPost = '/academico/compor';
+  static const posts = '/academico/posts';
   static const profissional = '/profissional';
   static const perfil = '/perfil';
   static const editarPerfil = '/perfil/editar';
@@ -35,6 +42,17 @@ abstract final class Rotas {
 
   static const busca = '/busca';
   static const universidades = '/universidades';
+
+  /// Mensagens diretas. **Ainda não existem** — a tela diz isso, e a rota existe
+  /// para o botão do cabeçalho não precisar mudar de lugar quando o serviço entrar.
+  static const mensagens = '/mensagens';
+
+  /// O hub de publicação, aberto pelo botão central do rodapé. Fora do shell, como
+  /// os formulários: é ida e volta.
+  static const publicar = '/publicar';
+  static const administracao = '/perfil/instituicao';
+
+  static String post(String id) => '$posts/$id';
 
   static String universidade(String id) => '$universidades/$id';
 
@@ -88,9 +106,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         SessaoAusente() => aberta ? null : Rotas.login,
 
         // Com sessão: login, cadastro e carregamento não fazem mais sentido.
-        SessaoAtiva() => aberta || destino == Rotas.carregando
-            ? Rotas.academico
-            : null,
+        SessaoAtiva() =>
+          aberta || destino == Rotas.carregando ? Rotas.academico : null,
       };
     },
 
@@ -128,6 +145,30 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, _) => const TrocarSenhaScreen(),
       ),
       GoRoute(path: Rotas.busca, builder: (_, _) => const BuscaScreen()),
+      GoRoute(
+        path: Rotas.mensagens,
+        builder: (_, _) => const MensagensScreen(),
+      ),
+      GoRoute(path: Rotas.publicar, builder: (_, _) => const PublicarScreen()),
+      GoRoute(
+        path: Rotas.administracao,
+        builder: (_, _) => const AdministracaoScreen(),
+      ),
+
+      // Fora do shell, como os formulários: compor um comunicado é ida e volta, e
+      // manter a barra inferior convida a sair pela metade. A ordem importa —
+      // `/academico/compor` antes de `/academico/posts/:id` não colide, mas os
+      // dois precisam vir antes do `StatefulShellRoute`, senão o ramo do
+      // Acadêmico captura o prefixo e abre o feed.
+      GoRoute(
+        path: Rotas.comporPost,
+        builder: (_, _) => const ComporPostScreen(),
+      ),
+      GoRoute(
+        path: '${Rotas.posts}/:id',
+        builder: (_, estado) =>
+            PostScreen(postId: estado.pathParameters['id']!),
+      ),
       GoRoute(
         path: '${Rotas.universidades}/:id',
         builder: (_, estado) => PerfilDeUniversidadeScreen(

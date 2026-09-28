@@ -303,7 +303,6 @@ class FakeProfileRepository implements ProfileRepository {
       seguindo:
           _banco.seguindoUniversidades[eu.id]?.contains(universidadeId) ??
           false,
-      totalDeAlunos: _banco.totalDeAlunos(universidadeId),
     );
   }
 
@@ -431,6 +430,228 @@ class FakeProfileRepository implements ProfileRepository {
       conjunto.add(universidadeId);
     } else {
       conjunto.remove(universidadeId);
+    }
+  }
+
+  // ───────────────  administração da própria instituição  ───────────────
+
+  /// A universidade da conta autenticada, exigindo `faculdade` **ativada**.
+  ///
+  /// As três recusas do serviço, na mesma ordem: tipo errado, conta pendente, e
+  /// conta institucional sem instituição associada. A do meio é a que o falso
+  /// mais precisa reproduzir — a conta de empresa das fixtures nasce pendente, e
+  /// é com ela que se vê o aviso de análise na tela.
+  String _minhaInstituicao() {
+    final eu = _banco.usuarioAtual;
+
+    if (eu.tipo != TipoConta.faculdade) {
+      throw const FalhaDePermissao(
+        'Sua conta não tem permissão para esta ação',
+      );
+    }
+    if (eu.ativadaEm == null) {
+      throw const FalhaDePermissao(
+        'Sua instituição ainda está em análise. Você será avisado quando for ativada.',
+      );
+    }
+
+    final universidadeId = _banco.universidadeDaConta(eu.id);
+    if (universidadeId == null) {
+      throw const FalhaDePermissao(
+        'Esta conta não administra nenhuma instituição',
+      );
+    }
+    return universidadeId;
+  }
+
+  @override
+  Future<List<Curso>> meusCursos() async {
+    await _esperar();
+    return List.unmodifiable(_banco.cursos[_minhaInstituicao()] ?? const []);
+  }
+
+  @override
+  Future<Curso> criarCurso(String nome) async {
+    await _esperar();
+
+    final universidadeId = _minhaInstituicao();
+    final limpo = nome.trim();
+
+    if (limpo.length < 2) {
+      throw const FalhaDeValidacao(
+        campos: {
+          'nome': ['O nome do curso precisa ter ao menos 2 caracteres'],
+        },
+      );
+    }
+
+    final lista = _banco.cursos.putIfAbsent(universidadeId, () => <Curso>[]);
+    // Unicidade do **par** universidade + nome, e sem diferenciar maiúsculas: o
+    // mesmo curso existe em várias faculdades, mas "ADS" e "ads" na mesma seriam
+    // duas entradas para a mesma coisa no combobox do aluno.
+    if (lista.any((c) => c.nome.toLowerCase() == limpo.toLowerCase())) {
+      throw const FalhaDeConflito(
+        'Já existe um curso com este nome na instituição',
+      );
+    }
+
+    final curso = Curso(id: _banco.proximoId('curso'), nome: limpo);
+    lista.add(curso);
+    lista.sort((a, b) => a.nome.compareTo(b.nome));
+    return curso;
+  }
+
+  @override
+  Future<void> removerCurso(String cursoId) async {
+    await _esperar();
+
+    final universidadeId = _minhaInstituicao();
+    final lista = _banco.cursos[universidadeId] ?? const <Curso>[];
+
+    if (!lista.any((c) => c.id == cursoId)) {
+      throw const FalhaNaoEncontrado('Curso não encontrado nesta instituição');
+    }
+
+    // `ON DELETE RESTRICT` no banco, reproduzido aqui. Apagar um curso com
+    // matrícula apagaria o selo de quem se formou nele — e a tela precisa
+    // aprender a tratar esta recusa, não a supor que remover sempre dá certo.
+    final emUso =
+        _banco.matriculas.any(
+          (m) => m.universidadeId == universidadeId && m.cursoId == cursoId,
+        ) ||
+        _banco.usuarios.values.any(
+          (u) => u.formacoes.any(
+            (f) => f.universidade.id == universidadeId && f.curso.id == cursoId,
+          ),
+        );
+
+    if (emUso) {
+      throw const FalhaDeConflito(
+        'Este curso tem matrículas ou formações e não pode ser removido',
+      );
+    }
+
+    _banco.cursos[universidadeId] = lista
+        .where((c) => c.id != cursoId)
+        .toList();
+  }
+
+  @override
+  Future<List<Matricula>> minhasMatriculas({
+    String? cursoId,
+    String situacao = 'todas',
+  }) async {
+    await _esperar();
+
+    final universidadeId = _minhaInstituicao();
+
+    final linhas =
+        _banco.matriculas
+            .where((m) => m.universidadeId == universidadeId)
+            .where((m) => cursoId == null || m.cursoId == cursoId)
+            .map((m) => _montarMatricula(m, universidadeId))
+            .where(
+              (m) => switch (situacao) {
+                'pendentes' => m.pendente,
+                'vinculadas' => m.vinculada,
+                _ => true,
+              },
+            )
+            .toList()
+          ..sort((a, b) => a.cpf.compareTo(b.cpf));
+
+    return linhas;
+  }
+
+  Matricula _montarMatricula(MatriculaFalsa matricula, String universidadeId) {
+    // O dono do CPF, **se** já existe conta com ele. Nulo é o caso comum: a
+    // faculdade matricula quem ainda não baixou o app.
+    final dono = _banco.usuarios.values
+        .where((u) => u.cpf == matricula.cpf)
+        .firstOrNull;
+
+    // `vinculada` é sobre o vínculo **com esta** instituição. Um aluno que migrou
+    // para outra faculdade continua na lista antiga, e pendente nela.
+    final vinculada = dono?.vinculo?.universidade.id == universidadeId;
+
+    return Matricula(
+      id: matricula.id,
+      cpf: matricula.cpf,
+      curso:
+          _banco.cursoPorId(universidadeId, matricula.cursoId) ??
+          Curso(id: matricula.cursoId, nome: 'Curso removido'),
+      vinculada: vinculada,
+      usuario: dono == null ? null : _publico(dono),
+      criadoEm: dono?.criadoEm ?? DateTime.now().toUtc(),
+    );
+  }
+
+  @override
+  Future<Matricula> criarMatricula({
+    required String cpf,
+    required String cursoId,
+  }) async {
+    await _esperar();
+
+    final universidadeId = _minhaInstituicao();
+    final digitos = normalizarCpf(cpf);
+
+    if (!cpfEValido(digitos)) {
+      throw const FalhaDeValidacao(
+        campos: {
+          'cpf': ['CPF inválido'],
+        },
+      );
+    }
+    if (_banco.cursoPorId(universidadeId, cursoId) == null) {
+      throw const FalhaDeValidacao(
+        campos: {
+          'cursoId': ['Este curso não é da sua instituição'],
+        },
+      );
+    }
+    // Um CPF uma vez por instituição. Nada impede o mesmo CPF constar em várias
+    // faculdades — é o aluno que só pode ter vínculo com uma por vez.
+    if (_banco.matriculaDe(universidadeId, digitos) != null) {
+      throw const FalhaDeConflito('Este CPF já está matriculado aqui');
+    }
+
+    final matricula = MatriculaFalsa(
+      id: _banco.proximoId('matricula'),
+      universidadeId: universidadeId,
+      cpf: digitos,
+      cursoId: cursoId,
+    );
+    _banco.matriculas.add(matricula);
+
+    return _montarMatricula(matricula, universidadeId);
+  }
+
+  @override
+  Future<void> removerMatricula(String matriculaId) async {
+    await _esperar();
+
+    final universidadeId = _minhaInstituicao();
+    final matricula = _banco.matriculas
+        .where((m) => m.id == matriculaId && m.universidadeId == universidadeId)
+        .firstOrNull;
+
+    if (matricula == null) {
+      throw const FalhaNaoEncontrado('Matrícula não encontrada');
+    }
+
+    _banco.matriculas.remove(matricula);
+
+    // Encerra o vínculo do dono daquele CPF **com esta** universidade, e mantém a
+    // formação verificada: o caso comum é o aluno ter se formado, e ele realmente
+    // estudou lá. Se já migrou para outra, a matrícula antiga sendo apagada não
+    // derruba o vínculo novo.
+    final dono = _banco.usuarios.values
+        .where((u) => u.cpf == matricula.cpf)
+        .firstOrNull;
+
+    if (dono != null && dono.vinculo?.universidade.id == universidadeId) {
+      _banco.salvar(dono.copyWith(vinculo: null));
     }
   }
 }
