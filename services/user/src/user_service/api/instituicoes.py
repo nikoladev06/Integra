@@ -1,5 +1,6 @@
 """Universidades: catálogo público, perfil, e a administração que cada uma faz."""
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Response
@@ -20,9 +21,11 @@ from user_service.schemas import (
     PerfilDeUniversidadeOut,
     PerfilOut,
     PerfilPublicoOut,
+    ResumoDeUniversidadeOut,
+    UniversidadeDaContaOut,
     UniversidadeOut,
 )
-from user_service.services import instituicoes, perfis, seguir, vinculos
+from user_service.services import instituicoes, perfis, seguir
 
 router = APIRouter(tags=["instituições"])
 
@@ -50,6 +53,64 @@ async def criar_conta_interna(dados: CriarInstituicaoIn, sessao: SessaoDep) -> P
     """
     conta = await instituicoes.criar_conta(sessao, dados)
     return PerfilOut.model_validate(conta)
+
+
+@router.get(
+    "/universidades/interno/resumos",
+    response_model=list[ResumoDeUniversidadeOut],
+    include_in_schema=False,
+    dependencies=[TokenDeServico],
+)
+async def resumos_de_universidades(
+    sessao: SessaoDep,
+    ids: Annotated[list[UUID], Query(max_length=50)],
+) -> list[ResumoDeUniversidadeOut]:
+    """Nome, sigla e foto de várias universidades de uma vez.
+
+    O cabeçalho dos cards de post, resolvido pelo academic-service na leitura em
+    vez de copiado para dentro de cada post na publicação. O limite de 50 é o
+    tamanho máximo de uma página de feed: mais ids que isso não vêm de um caso
+    de uso real.
+    """
+    encontradas = await perfis.resumos_de_universidades(sessao, ids)
+    return [ResumoDeUniversidadeOut.model_validate(u) for u in encontradas]
+
+
+@router.get(
+    "/universidades/interno/de-conta/{contaId}",
+    response_model=UniversidadeDaContaOut,
+    include_in_schema=False,
+    dependencies=[TokenDeServico],
+)
+async def universidade_da_conta_interna(
+    contaId: UUID,
+    sessao: SessaoDep,
+) -> UniversidadeDaContaOut:
+    """Tudo que o academic-service precisa para autorizar uma publicação.
+
+    As três coisas numa chamada, e cada uma por um motivo:
+
+    - **a universidade da conta** — porque a universidade do post é a do autor, e
+      não um campo do corpo: aceitá-lo do cliente deixaria uma faculdade publicar
+      no nome de outra;
+    - **`contaAtiva`** — porque a conta institucional nasce pendente, e a checagem
+      tem que consultar o banco: no JWT, uma conta desativada seguiria publicando
+      por até 15 minutos;
+    - **os cursos** — porque `visibilidade: curso` exige um curso *desta*
+      instituição, e quem é dono dessa lista é este serviço.
+    """
+    universidade = await instituicoes.universidade_da_conta(sessao, contaId)
+    conta = await perfis.obter(sessao, contaId)
+    cursos = await instituicoes.listar_cursos(sessao, universidade.id)
+
+    return UniversidadeDaContaOut(
+        id=universidade.id,
+        nome=universidade.nome,
+        sigla=universidade.sigla,
+        foto_url=universidade.foto_url,
+        cursos=[CursoOut.model_validate(c) for c in cursos],
+        conta_ativa=conta.ativa,
+    )
 
 
 # ─────────────────────────  catálogo público  ─────────────────────────
@@ -140,7 +201,6 @@ async def perfil_da_universidade(
         foto_url=universidade.foto_url,
         tem_vinculo=usuario.tem_vinculo_com(universidadeId),
         seguindo=await seguir.segue_universidade(sessao, usuario.id, universidadeId),
-        total_de_alunos=await vinculos.total_de_alunos(sessao, universidadeId),
     )
 
 

@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Integra — user-service
-  version: 2.1.0
+  version: 2.2.0
   description: |
     Perfil, formação, vínculo institucional e o grafo de seguidores.
 
@@ -906,9 +906,15 @@ components:
             Se o leitor tem vínculo ativo com esta instituição. Decide se o menu
             oferece "inserir CPF" ou "encerrar vínculo".
         seguindo: { type: boolean }
-        totalDeAlunos:
-          type: integer
-          description: Quantos têm vínculo ativo. Agregado, sem expor quem.
+
+    # `totalDeAlunos` saiu na v2.2. Ele era um agregado que não expunha quem, mas
+    # expunha QUANTOS — e quantos alunos uma faculdade tem no Integra é informação
+    # dela, não de quem abre o perfil. Foi removido da resposta, e não apenas
+    # escondido na tela: um campo que o cliente deixa de exibir continua legível
+    # para quem ler o JSON, e aí a decisão de produto não valeria nada.
+    #
+    # Se a própria instituição precisar do número, o lugar é a administração dela —
+    # rota `/universidades/me/*`, autenticada como a conta que administra.
 
     UniversidadeSeguida:
       allOf:

@@ -82,9 +82,12 @@ jobs:
       # com um conjunto de dependências que ninguém tem na máquina.
       - run: uv sync --all-packages --frozen
 
-      - run: uv run ruff check .
+      # `../infra` entra no escopo por causa de `portao_academico.py`, o roteiro do
+      # portão do pilar Acadêmico: ele mora ao lado do compose porque precisa da
+      # stack no ar, e fora do escopo do lint apodreceria sem ninguém notar.
+      - run: uv run ruff check . ../infra
 
-      - run: uv run ruff format --check .
+      - run: uv run ruff format --check . ../infra
 
       # As migrações constroem o schema que os testes de integração usam. Rodar
       # aqui também prova que elas aplicam numa base vazia — o caminho que a VM
@@ -93,6 +96,7 @@ jobs:
         run: |
           (cd user && uv run --project .. alembic upgrade head)
           (cd auth && uv run --project .. alembic upgrade head)
+          (cd academic && uv run --project .. alembic upgrade head)
           (cd user && uv run --project .. python -m user_service.seed)
 
       # Guarda de deriva do schema: falha se algum modelo mudou sem migração
@@ -102,6 +106,7 @@ jobs:
         run: |
           (cd user && uv run --project .. alembic check)
           (cd auth && uv run --project .. alembic check)
+          (cd academic && uv run --project .. alembic check)
 
       # Inclui test_contratos.py, que falha se algum serviço expuser rota fora
       # de contracts/.

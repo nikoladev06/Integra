@@ -7,6 +7,7 @@
 # Depois disso:
 #   http://localhost:8080/health/auth
 #   http://localhost:8080/health/user
+#   http://localhost:8080/health/academic
 #   http://localhost:8081            painel do Traefik (só local)
 
 name: integra
@@ -125,6 +126,45 @@ services:
       - traefik.http.routers.user-health.middlewares=user-health-path
       - traefik.http.routers.user-health.service=user
       - traefik.http.middlewares.user-health-path.replacepath.path=/health
+    networks: [borda, interna]
+
+  academic:
+    build:
+      context: ../services
+      args:
+        SERVICO: academic
+    restart: unless-stopped
+    environment:
+      INTEGRA_AMBIENTE: ${INTEGRA_AMBIENTE:-local}
+      INTEGRA_JWT_SECRET: ${INTEGRA_JWT_SECRET}
+      # O mesmo segredo de serviço do auth: é ele que abre as rotas `/…/interno/…`
+      # do user-service, de onde saem a lista de seguidas (o escopo do feed), a
+      # instituição de quem publica e os resumos que montam os cards.
+      INTEGRA_SERVICO_TOKEN: ${INTEGRA_SERVICO_TOKEN}
+      INTEGRA_USER_SERVICE_URL: http://user:8000
+      INTEGRA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # `service_started` e não `service_healthy`: o academic-service **sobe** sem
+      # o user-service. Só o escopo `geral` do feed depende dele — o `minha` sai
+      # inteiramente dos claims do token. Exigir saúde aqui transformaria essa
+      # independência deliberada em dependência de inicialização.
+      user:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.academic.loadbalancer.server.port=8000
+      # Um prefixo só: todo caminho do contrato começa em `/academic`, inclusive
+      # `/academic/universidades/{id}/posts` — que é de propósito, para não
+      # competir com o `/universidades` do user-service no roteamento do gateway.
+      - traefik.http.routers.academic.rule=PathPrefix(`/academic`)
+      - traefik.http.routers.academic.entrypoints=web
+      - traefik.http.routers.academic-health.rule=Path(`/health/academic`)
+      - traefik.http.routers.academic-health.entrypoints=web
+      - traefik.http.routers.academic-health.middlewares=academic-health-path
+      - traefik.http.routers.academic-health.service=academic
+      - traefik.http.middlewares.academic-health-path.replacepath.path=/health
     networks: [borda, interna]
 
 networks:

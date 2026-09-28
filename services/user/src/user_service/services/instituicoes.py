@@ -170,6 +170,20 @@ async def universidade_da_conta(sessao: AsyncSession, conta_id: UUID) -> Univers
     return universidade
 
 
+async def universidade_administrada(sessao: AsyncSession, conta_id: UUID) -> UUID | None:
+    """O id da instituição que esta conta administra, ou `None`.
+
+    Gêmea de [universidade_da_conta], e a diferença é o que cada uma serve.
+    Aquela levanta 403: é o portão de "administrar cursos e matrículas", e quem
+    chega lá sem instituição está num caminho que não existe. Esta responde `None`:
+    é consultada para **montar o escopo de um feed**, onde a maioria das contas —
+    todo aluno — legitimamente não administra nada.
+    """
+    return (
+        await sessao.execute(select(Universidade.id).where(Universidade.conta_id == conta_id))
+    ).scalar_one_or_none()
+
+
 # ──────────────────────────────  cursos  ──────────────────────────────
 
 

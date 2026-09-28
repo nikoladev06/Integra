@@ -27,6 +27,7 @@ CONTRATOS = RAIZ / "contracts"
 SERVICOS = {
     "auth": CONTRATOS / "auth.openapi.yaml",
     "user": CONTRATOS / "user.openapi.yaml",
+    "academic": CONTRATOS / "academic.openapi.yaml",
 }
 
 
@@ -49,6 +50,8 @@ def _rotas_do_app(app: FastAPI) -> set[str]:
 def _app_do_servico(nome: str) -> FastAPI:
     if nome == "auth":
         from auth_service.main import app
+    elif nome == "academic":
+        from academic_service.main import app
     else:
         from user_service.main import app
     return app

@@ -27,11 +27,13 @@ COPY pyproject.toml uv.lock ./
 COPY shared/pyproject.toml shared/
 COPY auth/pyproject.toml auth/
 COPY user/pyproject.toml user/
+COPY academic/pyproject.toml academic/
 RUN uv sync --frozen --no-dev --no-install-workspace --package "integra-${SERVICO}"
 
 COPY shared/ shared/
 COPY auth/ auth/
 COPY user/ user/
+COPY academic/ academic/
 RUN uv sync --frozen --no-dev --package "integra-${SERVICO}"
 
 
