@@ -21,6 +21,7 @@
 # ferramentas de agente (locais de cada dev)
 .claude
 .agents
+PLANO.md
 
 # ---------- app/ (Flutter) ----------
 app/.dart_tool/
