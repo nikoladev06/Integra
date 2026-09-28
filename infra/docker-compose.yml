@@ -111,6 +111,12 @@ services:
       INTEGRA_JWT_SECRET: ${INTEGRA_JWT_SECRET}
       INTEGRA_SERVICO_TOKEN: ${INTEGRA_SERVICO_TOKEN}
       INTEGRA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Para `POST /users/me/avatar/upload-url`. O endpoint é o que o CLIENTE alcança:
+      # assinar é HMAC local, e este serviço nunca chama o storage.
+      INTEGRA_STORAGE_ENDPOINT: ${INTEGRA_STORAGE_ENDPOINT:-http://localhost:9000}
+      INTEGRA_STORAGE_BUCKET: ${INTEGRA_STORAGE_BUCKET:-integra}
+      INTEGRA_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-integra}
+      INTEGRA_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-integra-minio-dev}
     depends_on:
       postgres:
         condition: service_healthy

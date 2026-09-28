@@ -6,10 +6,13 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from integra_shared import armazenamento
 from user_service.api.deps import SessaoDep, TokenDeServico, UsuarioDep
 from user_service.schemas import (
     AtivacaoOut,
     AtualizarPerfilIn,
+    AvatarUploadUrlIn,
+    AvatarUploadUrlOut,
     CriarUsuarioIn,
     EscopoDoFeedOut,
     PaginaDePerfis,
@@ -18,6 +21,7 @@ from user_service.schemas import (
     ResumoDePerfilOut,
 )
 from user_service.services import instituicoes, perfis, seguir
+from user_service.settings import settings
 
 router = APIRouter(tags=["perfil"])
 
@@ -32,6 +36,42 @@ async def atualizar_meu_perfil(
     dados: AtualizarPerfilIn, sessao: SessaoDep, usuario: UsuarioDep
 ) -> PerfilOut:
     return PerfilOut.model_validate(await perfis.atualizar(sessao, usuario.id, dados))
+
+
+@router.post("/users/me/avatar/upload-url", response_model=AvatarUploadUrlOut, status_code=201)
+async def url_de_upload_do_avatar(
+    dados: AvatarUploadUrlIn, usuario: UsuarioDep
+) -> AvatarUploadUrlOut:
+    """Assina um `PUT` para o cliente enviar a foto direto ao storage.
+
+    O último caminho do contrato de `user` (2.2.0) a ser implementado — ele existe desde
+    a Sprint 1 para a tela de perfil ser escrita uma vez só, e o Object Storage subiu
+    agora, na Sprint 5.
+
+    O caminho do objeto é derivado do id de quem pede: `avatares/{conta}/{uuid}.ext`. O
+    cliente não o escolhe, e por isso não há como pedir URL para o caminho do avatar de
+    outra pessoa e sobrescrever a foto dela.
+
+    Sem sessão e sem banco: assinar é HMAC local sobre a requisição que o cliente vai
+    fazer, e este serviço nunca chama o storage. Sem chave configurada a rota responde
+    503 — é o ambiente local sem MinIO, em que o resto da API funciona.
+
+    A rota **não grava** `fotoUrl` no perfil. Quem grava é o `PATCH /users/me`, depois
+    de o `PUT` ter sucesso: gravar aqui apontaria o perfil para um objeto que talvez
+    nunca chegue, e a foto quebraria para todo mundo que abrisse o perfil.
+    """
+    emitido = armazenamento.emitir_upload(
+        settings,
+        prefixo="avatares",
+        conta_id=usuario.id,
+        content_type=dados.content_type,
+        tamanho_bytes=dados.tamanho_bytes,
+    )
+    return AvatarUploadUrlOut(
+        upload_url=emitido.upload_url,
+        foto_url=emitido.url_publica,
+        expira_em=emitido.expira_em,
+    )
 
 
 @router.get("/users", response_model=PaginaDePerfis)

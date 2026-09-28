@@ -322,6 +322,37 @@ class ResumoDePerfilOut(_Saida):
     foto_url: str | None = None
 
 
+class AvatarUploadUrlIn(_Entrada):
+    """`POST /users/me/avatar/upload-url`.
+
+    O tamanho é declarado **antes** do envio porque ele entra na assinatura: o storage
+    recusa um `PUT` cujo `content-length` não seja exatamente este. Sem isso,
+    "tamanhoBytes" seria uma declaração de boa vontade, e nada impediria 500 MB numa URL
+    pedida para 2 KB.
+
+    As faixas não estão repetidas aqui: `integra_shared.armazenamento` valida o tipo e o
+    tamanho e levanta 422 nomeando o campo. Duas escritas do mesmo limite divergiriam, e
+    quem chama o módulo compartilhado de outro serviço não herdaria esta cópia.
+    """
+
+    content_type: str
+    tamanho_bytes: int
+
+
+class AvatarUploadUrlOut(_Saida):
+    """Onde enviar, o que gravar depois, e até quando a URL vale.
+
+    O cliente faz `PUT` do arquivo em `uploadUrl` e depois grava `fotoUrl` via
+    `PATCH /users/me`. **Bytes de imagem nunca atravessam este serviço** — receber o
+    multipart e repassar faria cada upload ocupar um worker do uvicorn pelo tempo da
+    conexão do celular, e o serviço de perfil ficaria indisponível por causa de fotos.
+    """
+
+    upload_url: str
+    foto_url: str
+    expira_em: datetime
+
+
 class EscopoDoFeedOut(_Saida):
     """As duas listas que decidem o feed profissional. Rota interna, Sprint 5.
 
