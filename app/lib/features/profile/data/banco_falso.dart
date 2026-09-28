@@ -1,4 +1,5 @@
 import 'package:integra/core/error/failure.dart';
+import 'package:integra/features/academic/data/models/post.dart';
 import 'package:integra/features/profile/data/fixtures.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
 
@@ -10,14 +11,76 @@ import 'package:integra/features/profile/data/models/perfil.dart';
 /// mesma forma, pelo mesmo motivo.
 class MatriculaFalsa {
   const MatriculaFalsa({
+    required this.id,
     required this.universidadeId,
     required this.cpf,
     required this.cursoId,
   });
 
+  /// Existe porque a tela de administração remove matrícula **por id**, como o
+  /// contrato (`DELETE /universidades/me/matriculas/{id}`). Identificar pelo par
+  /// universidade+CPF funcionaria, mas poria o CPF na URL — e CPF não circula em
+  /// caminho de requisição, onde acaba em log de proxy.
+  final String id;
+
   final String universidadeId;
   final String cpf;
   final String cursoId;
+}
+
+/// Um comunicado no banco falso.
+///
+/// Guarda os mesmos campos da tabela `academic.posts`, e **não** o `Post` já
+/// montado: `instituicao` e `curso` são resolvidos na leitura, como o serviço
+/// real faz. Guardar o objeto pronto faria o falso não reproduzir o efeito que
+/// mais importa — renomear a instituição alcança o que já foi publicado.
+class PostFalso {
+  PostFalso({
+    required this.id,
+    required this.universidadeId,
+    required this.autorId,
+    required this.visibilidade,
+    required this.conteudo,
+    required this.criadoEm,
+    this.cursoId,
+    this.editadoEm,
+  });
+
+  final String id;
+  final String universidadeId;
+  final String autorId;
+  final DateTime criadoEm;
+
+  /// Mutáveis: a faculdade autora edita o texto e **o alcance** de um post
+  /// publicado, e `editadoEm` é o que deixa a mudança visível na tela.
+  ///
+  /// Quem **não** é mutável diz o resto: `universidadeId` e `autorId` são finais,
+  /// então nenhuma edição consegue mover o post para outra instituição.
+  String conteudo;
+  Visibilidade visibilidade;
+  String? cursoId;
+  DateTime? editadoEm;
+
+  /// Ids de quem curtiu. Um `Set`, e não um contador: `curtidoPorMim` é estado
+  /// por leitor, e com contador saber se **este** leitor curtiu exigiria guardar
+  /// a lista em outro lugar de qualquer forma.
+  final Set<String> curtidas = {};
+}
+
+class ComentarioFalso {
+  ComentarioFalso({
+    required this.id,
+    required this.postId,
+    required this.autorId,
+    required this.conteudo,
+    required this.criadoEm,
+  });
+
+  final String id;
+  final String postId;
+  final String autorId;
+  final String conteudo;
+  final DateTime criadoEm;
 }
 
 /// O estado em memória que os dois repositórios falsos compartilham.
@@ -40,12 +103,14 @@ class BancoFalso {
     for (final (universidadeId, cpf, cursoId) in Fixtures.matriculas) {
       matriculas.add(
         MatriculaFalsa(
+          id: proximoId('matricula'),
           universidadeId: universidadeId,
           cpf: cpf,
           cursoId: cursoId,
         ),
       );
     }
+    posts.addAll(Fixtures.posts(proximoId));
   }
 
   final Map<String, Perfil> usuarios = {};
@@ -56,6 +121,18 @@ class BancoFalso {
     for (final entrada in Fixtures.cursosPorUniversidade.entries)
       entrada.key: [...entrada.value],
   };
+
+  /// universidade → conta `faculdade` que a administra.
+  ///
+  /// No banco de verdade é a coluna `universidades.conta_id`, e a direção é a
+  /// mesma: uma universidade tem no máximo uma conta. A maioria das semeadas não
+  /// tem nenhuma — existe no catálogo e não publica.
+  final Map<String, String> contaDaUniversidade = {
+    ...Fixtures.contasInstitucionais,
+  };
+
+  final List<PostFalso> posts = [];
+  final List<ComentarioFalso> comentarios = [];
 
   /// usuário → universidades que ele segue explicitamente. A do vínculo entra
   /// na listagem sem estar aqui, como no `user-service`.
@@ -100,9 +177,41 @@ class BancoFalso {
       .where((m) => m.universidadeId == universidadeId && m.cpf == cpf)
       .firstOrNull;
 
-  int totalDeAlunos(String universidadeId) => usuarios.values
-      .where((u) => u.vinculo?.universidade.id == universidadeId)
-      .length;
-
   void salvar(Perfil perfil) => usuarios[perfil.id] = perfil;
+
+  // ───────────────────────  pilar Acadêmico  ───────────────────────
+
+  PostFalso? postPorId(String postId) =>
+      posts.where((p) => p.id == postId).firstOrNull;
+
+  /// A universidade que esta conta `faculdade` administra, ou nulo.
+  ///
+  /// É o que o `academic-service` pede ao `user-service` antes de deixar alguém
+  /// publicar — a universidade do post é a da conta autora, nunca um campo que o
+  /// cliente manda.
+  String? universidadeDaConta(String contaId) => contaDaUniversidade.entries
+      .where((e) => e.value == contaId)
+      .map((e) => e.key)
+      .firstOrNull;
+
+  /// Quem o aluno segue, mais a do vínculo, mais a que ele administra.
+  ///
+  /// O conjunto do escopo `geral`. As três parcelas estão aqui pelo mesmo motivo
+  /// que no `user-service`: a do vínculo não é opcional enquanto o vínculo
+  /// existir, e a administrada não é opcional para a conta institucional — sem
+  /// ela a faculdade não veria o que acabou de publicar, porque conta
+  /// institucional não tem vínculo.
+  Set<String> universidadesDoEscopo(String usuarioId) {
+    final vinculo = usuarios[usuarioId]?.vinculo;
+    final administrada = universidadeDaConta(usuarioId);
+
+    return {
+      ...?seguindoUniversidades[usuarioId],
+      if (vinculo != null) vinculo.universidade.id,
+      if (administrada != null) administrada,
+    };
+  }
+
+  int totalDeComentarios(String postId) =>
+      comentarios.where((c) => c.postId == postId).length;
 }

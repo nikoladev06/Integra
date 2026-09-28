@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:integra/core/providers.dart';
 import 'package:integra/core/storage/token_storage.dart';
+import 'package:integra/features/academic/data/fake_academic_repository.dart';
 import 'package:integra/features/auth/data/fake_auth_repository.dart';
 import 'package:integra/features/profile/data/banco_falso.dart';
 import 'package:integra/features/profile/data/fake_profile_repository.dart';
@@ -51,6 +52,9 @@ Future<BancoFalso> bombearApp(
         profileRepositoryProvider.overrideWithValue(
           FakeProfileRepository(oBanco, latencia: Duration.zero),
         ),
+        academicRepositoryProvider.overrideWithValue(
+          FakeAcademicRepository(oBanco, latencia: Duration.zero),
+        ),
         tokenStorageProvider.overrideWithValue(
           tokens ?? TokenStorageEmMemoria(),
         ),
@@ -87,4 +91,19 @@ Future<BancoFalso> bombearAppAutenticado(
       refreshToken: 'refresh-valido',
     ),
   );
+}
+
+/// Abre o menu de opções da conta, no canto direito do cabeçalho do perfil.
+///
+/// As ações de conta — editar perfil, trocar senha, sair, e a administração da
+/// instituição — saíram do corpo da tela e foram para este menu quando o perfil
+/// ganhou abas: elas não pertencem nem às publicações nem ao currículo.
+///
+/// Um helper porque quatro arquivos de teste precisam da mesma sequência, e porque
+/// quando o menu mudar de forma a correção é num lugar só.
+Future<void> abrirMenuDaConta(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Perfil'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byTooltip('Opções da conta'));
+  await tester.pumpAndSettle();
 }

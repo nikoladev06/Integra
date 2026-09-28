@@ -1,15 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'package:integra/core/error/failure.dart';
 import 'package:integra/core/providers.dart';
+import 'package:integra/core/router/app_router.dart';
 import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/core/theme/tokens.dart';
+import 'package:integra/features/academic/presentation/academic_providers.dart';
+import 'package:integra/features/academic/presentation/widgets/post_card.dart';
 import 'package:integra/features/auth/domain/auth_validators.dart';
 import 'package:integra/features/auth/presentation/sessao_controller.dart';
 import 'package:integra/features/institution/presentation/instituicoes_providers.dart';
+import 'package:integra/features/academic/data/models/post.dart';
 import 'package:integra/features/profile/data/models/instituicao.dart';
+import 'package:integra/shared/widgets/abas_de_icone.dart';
+import 'package:integra/shared/widgets/cabecalho_integra.dart';
 
 /// O perfil público de uma universidade, alcançado pela busca.
 ///
@@ -33,27 +40,34 @@ class PerfilDeUniversidadeScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: tema.colorScheme.background,
-      appBar: AppBar(
-        title: const Text('Instituição'),
-        backgroundColor: tema.colorScheme.card,
-        surfaceTintColor: Colors.transparent,
-        actions: [
-          if (perfil.hasValue)
-            _MenuDaInstituicao(
-              universidade: perfil.requireValue,
-              aoConcluir: () =>
-                  ref.invalidate(perfilDeUniversidadeProvider(universidadeId)),
-            ),
-        ],
-      ),
       body: switch (perfil) {
-        AsyncError(:final error) => _Erro(
-          mensagem: error is Failure
-              ? error.mensagem
-              : 'Não foi possível carregar esta instituição.',
+        AsyncError(:final error) => CustomScrollView(
+          slivers: [
+            const CabecalhoIntegra(),
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _Erro(
+                mensagem: error is Failure
+                    ? error.mensagem
+                    : 'Não foi possível carregar esta instituição.',
+              ),
+            ),
+          ],
         ),
-        AsyncLoading() => const Center(child: CircularProgressIndicator()),
-        AsyncData(:final value) => _Conteudo(universidade: value),
+        AsyncLoading() => const CustomScrollView(
+          slivers: [
+            CabecalhoIntegra(),
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          ],
+        ),
+        AsyncData(:final value) => _Conteudo(
+          universidade: value,
+          aoConcluirAcao: () =>
+              ref.invalidate(perfilDeUniversidadeProvider(universidadeId)),
+        ),
       },
     );
   }
@@ -77,90 +91,245 @@ class _Erro extends StatelessWidget {
   );
 }
 
-class _Conteudo extends ConsumerWidget {
-  const _Conteudo({required this.universidade});
+/// O corpo do perfil: identificação, ação, e as **três abas** de comunicados.
+///
+/// Um [CustomScrollView] só, com o cabeçalho retrátil no topo e a barra de abas
+/// fixada logo abaixo. Não há `TabBarView`: cada aba é uma lista, e só uma aparece
+/// por vez, então basta um estado e um sliver de conteúdo. `TabBarView` traria um
+/// segundo eixo de rolagem aninhado no primeiro — e é aí que o cabeçalho deixa de
+/// saber que a lista rolou.
+class _Conteudo extends ConsumerStatefulWidget {
+  const _Conteudo({required this.universidade, required this.aoConcluirAcao});
 
   final PerfilDeUniversidade universidade;
+
+  /// Recarrega o perfil depois de inserir CPF, encerrar vínculo ou seguir — as
+  /// três mudam `temVinculo`, `seguindo` ou o total de alunos.
+  final VoidCallback aoConcluirAcao;
+
+  @override
+  ConsumerState<_Conteudo> createState() => _ConteudoState();
+}
+
+class _ConteudoState extends ConsumerState<_Conteudo> {
+  Visibilidade _aba = Visibilidade.publico;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = ShadTheme.of(context);
+    final cores = tema.colorScheme;
+    final universidade = widget.universidade;
+
+    return CustomScrollView(
+      slivers: [
+        CabecalhoIntegra(
+          // O menu ocupa o canto direito em vez do botão de mensagens: aqui ele é
+          // **a** ação da tela, e é por ele que o vínculo nasce. Mensagens está a
+          // um toque em qualquer aba; o menu só existe neste perfil.
+          direita: _MenuDaInstituicao(
+            universidade: universidade,
+            aoConcluir: widget.aoConcluirAcao,
+          ),
+        ),
+
+        SliverPadding(
+          padding: const EdgeInsets.all(Espaco.md),
+          sliver: SliverList.list(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: cores.academico.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      LucideIcons.school,
+                      color: cores.academico,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: Espaco.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // A sigla faz o papel do título que saiu do cabeçalho:
+                        // quem chegou aqui pela busca precisa saber onde chegou, e
+                        // "FATEC RP" diz mais que "Instituição".
+                        Text(universidade.sigla, style: tema.textTheme.h4),
+                        Text(universidade.nome, style: tema.textTheme.muted),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (universidade.bio != null) ...[
+                const SizedBox(height: Espaco.md),
+                Text(universidade.bio!, style: tema.textTheme.p),
+              ],
+              const SizedBox(height: Espaco.md),
+
+              // Nenhum selo de vínculo aqui, e os dois que existiam saíram por
+              // razões diferentes.
+              //
+              // **"N com vínculo"** era agregado e não expunha quem — mas expunha
+              // quantos, e quantos alunos uma faculdade tem no Integra é informação
+              // dela. Saiu da resposta da API junto (contrato de `user` 2.2.0), não
+              // só da tela: um campo escondido no cliente continua legível para
+              // quem ler o JSON.
+              //
+              // **"Você tem vínculo aqui"** era redundante. O menu do canto já
+              // oferece "encerrar vínculo" em vez de "inserir CPF", e as abas
+              // restritas já mostram conteúdo em vez de explicar o que falta —
+              // duas respostas à mesma pergunta, nos lugares onde ela é feita.
+              _BotaoDeSeguir(universidade: universidade),
+              const SizedBox(height: Espaco.md),
+            ],
+          ),
+        ),
+
+        // As três abas de alcance, no formato que o Instagram usa para separar
+        // posts, reels e marcações. A ordem vai do mais aberto para o mais fechado,
+        // e não é arrumação: quem abre o perfil sem vínculo vê a primeira cheia e
+        // as outras duas explicando o que falta — a regra do vínculo dita pela
+        // própria tela, no momento em que ela importa.
+        AbasDeIcone<Visibilidade>(
+          selecionada: _aba,
+          cor: cores.academico,
+          aoTrocar: (aba) => setState(() => _aba = aba),
+          abas: const [
+            (
+              valor: Visibilidade.publico,
+              icone: LucideIcons.globe,
+              rotulo: 'Geral',
+            ),
+            (
+              valor: Visibilidade.institucional,
+              icone: LucideIcons.lock,
+              rotulo: 'Institucional',
+            ),
+            (
+              valor: Visibilidade.curso,
+              icone: LucideIcons.graduationCap,
+              rotulo: 'Por curso',
+            ),
+          ],
+        ),
+
+        _ListaDaAba(universidade: universidade, aba: _aba),
+      ],
+    );
+  }
+}
+
+/// A lista da aba escolhida.
+///
+/// Cada aba é uma chamada com `visibilidade` própria, e o filtro é **de
+/// apresentação**: ele estreita o que a matriz de visibilidade já autorizou e nunca
+/// amplia. Pedir a aba "por curso" sem vínculo naquele curso devolve lista vazia —
+/// não os restritos.
+///
+/// As três abas aparecem para todo mundo, inclusive para quem não tem vínculo. A
+/// alternativa, esconder as duas restritas, deixaria o aluno sem saber que existe
+/// conteúdo que ele não alcança — e é justamente isso que o precisa levar a informar
+/// o CPF. O vazio de cada uma explica o que falta.
+class _ListaDaAba extends ConsumerWidget {
+  const _ListaDaAba({required this.universidade, required this.aba});
+
+  final PerfilDeUniversidade universidade;
+  final Visibilidade aba;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tema = ShadTheme.of(context);
-    final cores = tema.colorScheme;
-
-    return ListView(
-      padding: const EdgeInsets.all(Espaco.md),
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: cores.academico.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                LucideIcons.school,
-                color: cores.academico,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: Espaco.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(universidade.sigla, style: tema.textTheme.h4),
-                  Text(universidade.nome, style: tema.textTheme.muted),
-                ],
-              ),
-            ),
-          ],
-        ),
-        if (universidade.bio != null) ...[
-          const SizedBox(height: Espaco.md),
-          Text(universidade.bio!, style: tema.textTheme.p),
-        ],
-        const SizedBox(height: Espaco.md),
-
-        Wrap(
-          spacing: Espaco.sm,
-          runSpacing: Espaco.sm,
-          children: [
-            // Agregado, sem expor quem: o número conta quantos têm vínculo
-            // ativo, e não lista ninguém.
-            ShadBadge.secondary(
-              child: Text('${universidade.totalDeAlunos} com vínculo'),
-            ),
-            if (universidade.temVinculo)
-              const ShadBadge(child: Text('Você tem vínculo aqui')),
-          ],
-        ),
-        const SizedBox(height: Espaco.md),
-
-        _BotaoDeSeguir(universidade: universidade),
-        const SizedBox(height: Espaco.lg),
-
-        ShadCard(
-          title: const Text('Comunicados'),
-          child: Padding(
-            padding: const EdgeInsets.only(top: Espaco.sm),
-            child: Text(
-              universidade.temVinculo
-                  ? 'Com vínculo ativo, você verá aqui os comunicados gerais e '
-                        'os restritos ao seu curso. O serviço que os publica '
-                        'entra na Sprint 4.'
-                  : 'Sem vínculo, só os comunicados públicos aparecem aqui. '
-                        'Declarar a formação no perfil não muda isso — informe '
-                        'o CPF pelo menu para criar o vínculo.',
-              style: tema.textTheme.muted,
-            ),
-          ),
-        ),
-      ],
+    final posts = ref.watch(
+      postsDaUniversidadeProvider((
+        universidadeId: universidade.id,
+        visibilidade: aba,
+      )),
     );
+
+    return switch (posts) {
+      AsyncError(:final error) => _MensagemDaAba(
+        texto: error is Failure
+            ? error.mensagem
+            : 'Não foi possível carregar os comunicados.',
+      ),
+      AsyncLoading() => const SliverPadding(
+        padding: EdgeInsets.symmetric(vertical: Espaco.xl),
+        sliver: SliverToBoxAdapter(
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ),
+      AsyncData(:final value) when value.itens.isEmpty => _MensagemDaAba(
+        texto: _explicacaoDoVazio(),
+        estilo: tema.textTheme.muted,
+      ),
+      AsyncData(:final value) => SliverPadding(
+        padding: const EdgeInsets.all(Espaco.md),
+        sliver: SliverList.builder(
+          itemCount: value.itens.length,
+          itemBuilder: (context, indice) {
+            final post = value.itens[indice];
+            return PostCard(
+              post: post,
+              compacto: true,
+              aoTocar: () => context.push(Rotas.post(post.id)),
+            );
+          },
+        ),
+      ),
+    };
   }
+
+  /// Por que esta aba está vazia — e são três razões diferentes.
+  ///
+  /// A distinção é o que faz a tela ensinar o modelo em vez de só informar a
+  /// ausência: sem vínculo, a aba restrita está vazia **porque falta o vínculo**, e
+  /// não porque a instituição não publica.
+  String _explicacaoDoVazio() {
+    if (aba == Visibilidade.publico) {
+      return 'Nenhum comunicado público por aqui ainda.';
+    }
+
+    if (!universidade.temVinculo) {
+      return aba == Visibilidade.institucional
+          ? 'Os comunicados internos da ${universidade.sigla} só aparecem para '
+                'quem tem vínculo com ela. Declarar a formação no perfil não '
+                'basta — informe seu CPF pelo menu do canto superior direito.'
+          : 'Os comunicados restritos a um curso só aparecem para quem tem '
+                'vínculo ativo naquele curso. Informe seu CPF pelo menu para '
+                'criar o seu.';
+    }
+
+    return aba == Visibilidade.institucional
+        ? 'A ${universidade.sigla} ainda não publicou nada internamente.'
+        : 'Nada restrito ao seu curso ainda. Comunicados de outros cursos da '
+              '${universidade.sigla} não aparecem aqui.';
+  }
+}
+
+class _MensagemDaAba extends StatelessWidget {
+  const _MensagemDaAba({required this.texto, this.estilo});
+
+  final String texto;
+  final TextStyle? estilo;
+
+  @override
+  Widget build(BuildContext context) => SliverPadding(
+    padding: const EdgeInsets.all(Espaco.lg),
+    sliver: SliverToBoxAdapter(
+      child: Text(
+        texto,
+        style: estilo ?? ShadTheme.of(context).textTheme.muted,
+        textAlign: TextAlign.center,
+      ),
+    ),
+  );
 }
 
 class _BotaoDeSeguir extends ConsumerStatefulWidget {
@@ -187,9 +356,8 @@ class _BotaoDeSeguirState extends ConsumerState<_BotaoDeSeguir> {
       ref.invalidate(perfilDeUniversidadeProvider(widget.universidade.id));
     } on Failure catch (falha) {
       if (mounted) {
-        ShadToaster.of(context).show(
-          ShadToast.destructive(description: Text(falha.mensagem)),
-        );
+        ShadToaster.of(context)
+            .show(ShadToast.destructive(description: Text(falha.mensagem)));
       }
     } finally {
       if (mounted) setState(() => _ocupado = false);
@@ -270,9 +438,8 @@ class _MenuDaInstituicao extends ConsumerWidget {
       }
     } on Failure catch (falha) {
       if (context.mounted) {
-        ShadToaster.of(
-          context,
-        ).show(ShadToast.destructive(description: Text(falha.mensagem)));
+        ShadToaster.of(context)
+            .show(ShadToast.destructive(description: Text(falha.mensagem)));
       }
     }
   }
@@ -305,9 +472,8 @@ class _MenuDaInstituicao extends ConsumerWidget {
         // 403 e 404 chegam aqui com a **mesma mensagem**, de propósito: a
         // diferença de status serve a quem depura, não a quem quisesse usar a
         // rota como sonda da lista de matrículas da instituição.
-        ShadToaster.of(
-          context,
-        ).show(ShadToast.destructive(description: Text(falha.mensagem)));
+        ShadToaster.of(context)
+            .show(ShadToast.destructive(description: Text(falha.mensagem)));
       }
     }
   }

@@ -94,5 +94,54 @@ abstract interface class ProfileRepository {
   Future<List<UniversidadeSeguida>> universidadesSeguidas();
 
   /// `PUT`/`DELETE /users/me/seguindo/universidades/{id}`.
-  Future<void> seguirUniversidade(String universidadeId, {required bool seguir});
+  Future<void> seguirUniversidade(
+    String universidadeId, {
+    required bool seguir,
+  });
+
+  // ───────────────  administração da própria instituição  ───────────────
+  //
+  // Só conta `faculdade`, e as de escrita exigem também que ela esteja
+  // **ativada**. Todas operam sobre a instituição da conta autenticada — daí o
+  // `me` no caminho, e não um id de universidade: aceitar o id do cliente
+  // deixaria uma faculdade matricular alunos no nome de outra.
+  //
+  // É o que faz o vínculo poder nascer sem passar pelo seed, e por isso estas
+  // telas eram a herança da Sprint 3 mais urgente do pilar Acadêmico.
+
+  /// `GET /universidades/me/cursos`. Os que a própria instituição cadastrou.
+  Future<List<Curso>> meusCursos();
+
+  /// `POST /universidades/me/cursos`. Nome duplicado na mesma instituição é 409.
+  Future<Curso> criarCurso(String nome);
+
+  /// `DELETE /universidades/me/cursos/{id}`.
+  ///
+  /// Recusado quando há matrícula, formação ou vínculo apontando para o curso: no
+  /// banco as chaves são `ON DELETE RESTRICT`, porque apagar o curso apagaria o
+  /// selo de quem se formou nele.
+  Future<void> removerCurso(String cursoId);
+
+  /// `GET /universidades/me/matriculas`.
+  ///
+  /// [situacao] é `todas`, `pendentes` (CPF cadastrado e ninguém reivindicou) ou
+  /// `vinculadas`. É o filtro que responde a pergunta da secretaria: quem ainda
+  /// não entrou no app?
+  Future<List<Matricula>> minhasMatriculas({
+    String? cursoId,
+    String situacao = 'todas',
+  });
+
+  /// `POST /universidades/me/matriculas`. **Pode ser antes de a conta existir.**
+  Future<Matricula> criarMatricula({
+    required String cpf,
+    required String cursoId,
+  });
+
+  /// `DELETE /universidades/me/matriculas/{id}`.
+  ///
+  /// Encerra o vínculo de quem tinha aquele CPF, e **a formação segue
+  /// verificada** — o caso comum é o aluno ter se formado, e ele realmente
+  /// estudou lá.
+  Future<void> removerMatricula(String matriculaId);
 }

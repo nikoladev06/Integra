@@ -16,7 +16,13 @@ import '../../../helpers/localizadores.dart';
 /// prova é a costura: tela → repositório → estado → tela de novo.
 void main() {
   Future<void> abrirBusca(WidgetTester tester) async {
-    await tester.tap(find.text('Buscar universidades, empresas e pessoas'));
+    // Por rótulo de acessibilidade, e não pelo texto visível: o cabeçalho deixou
+    // de ter texto na Sprint 4, e o campo mostra só "Buscar". A frase inteira
+    // sobreviveu onde importa — é o nome que o leitor de tela anuncia —, e buscar
+    // por ela prova que o botão continua nomeado depois de o texto encurtar.
+    await tester.tap(
+      find.bySemanticsLabel('Buscar universidades, empresas e pessoas'),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -69,10 +75,7 @@ void main() {
 
       // Sem conta institucional ela não publica nem matricula, e dizer isso na
       // lista evita a viagem até um perfil que não tem o que oferecer.
-      expect(
-        find.textContaining('ainda sem conta no Integra'),
-        findsOne,
-      );
+      expect(find.textContaining('ainda sem conta no Integra'), findsOne);
     });
 
     testWidgets('nada encontrado é diferente de erro', (tester) async {
@@ -92,7 +95,10 @@ void main() {
       await tester.tap(find.text('FATEC RP'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Sem vínculo'), findsOne);
+      // O aviso de "sem vínculo você não vê o interno" deixou de ser um parágrafo
+      // solto no perfil e passou a ser o vazio da aba que está vazia por causa
+      // disso — o que é dito na aba "Institucional", em `perfil_universidade_test`.
+      // Aqui o que importa é o menu.
       await abrirMenuDaInstituicao(tester);
       expect(find.text('Inserir CPF'), findsOne);
       expect(find.text('Encerrar vínculo'), findsNothing);
@@ -166,7 +172,10 @@ void main() {
       await tester.tap(find.text('FATEC RP'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Você tem vínculo aqui'), findsOne);
+      // O selo "Você tem vínculo aqui" saiu por ser redundante: o menu já responde
+      // a mesma pergunta, oferecendo encerrar em vez de inserir.
+      expect(find.text('Você tem vínculo aqui'), findsNothing);
+
       await abrirMenuDaInstituicao(tester);
       expect(find.text('Encerrar vínculo'), findsOne);
       expect(find.text('Inserir CPF'), findsNothing);
@@ -181,6 +190,11 @@ void main() {
       await tester.tap(find.byTooltip('Perfil'));
       await tester.pumpAndSettle();
 
+      // O perfil abre nas publicações, como no Instagram; o currículo é a segunda
+      // aba. A separação em duas partes é o que impede o currículo de empurrar as
+      // publicações para fora da tela.
+      await tocar(tester, find.byTooltip('Currículo'));
+
       // Dois cartões, com textos que dizem o que cada um vale. Na v1 havia um
       // só, e ele dava a entender que declarar era pertencer.
       expect(find.text('Formação'), findsOne);
@@ -191,7 +205,7 @@ void main() {
     testWidgets('conta institucional pendente vê o aviso de análise', (
       tester,
     ) async {
-      await bombearAppAutenticado(tester, email: 'rh@orbita.com.br');
+      await bombearAppAutenticado(tester, email: Fixtures.emailEmpresa);
       await tester.tap(find.byTooltip('Perfil'));
       await tester.pumpAndSettle();
 
@@ -219,8 +233,7 @@ void main() {
 
   group('editar perfil', () {
     Future<void> abrirEdicao(WidgetTester tester) async {
-      await tester.tap(find.byTooltip('Perfil'));
-      await tester.pumpAndSettle();
+      await abrirMenuDaConta(tester);
       await tocar(tester, find.text('Editar perfil'));
     }
 
@@ -238,9 +251,7 @@ void main() {
       expect(banco.usuarios[Fixtures.perfilDemo.id]!.bio, 'Nova bio de teste');
     });
 
-    testWidgets('formação verificada não tem botão de remover', (
-      tester,
-    ) async {
+    testWidgets('formação verificada não tem botão de remover', (tester) async {
       await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
       await abrirEdicao(tester);
       await tester.ensureVisible(find.text('Formação'));
@@ -273,8 +284,7 @@ void main() {
         email: Fixtures.emailDemo,
       );
 
-      await tester.tap(find.byTooltip('Perfil'));
-      await tester.pumpAndSettle();
+      await abrirMenuDaConta(tester);
       await tocar(tester, find.text('Trocar senha'));
 
       final campos = find.byType(EditableText);
@@ -293,8 +303,7 @@ void main() {
     testWidgets('mostra todos os erros de uma vez', (tester) async {
       await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
 
-      await tester.tap(find.byTooltip('Perfil'));
-      await tester.pumpAndSettle();
+      await abrirMenuDaConta(tester);
       await tocar(tester, find.text('Trocar senha'));
 
       final campos = find.byType(EditableText);

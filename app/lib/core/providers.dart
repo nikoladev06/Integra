@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:integra/core/config/ambiente.dart';
 import 'package:integra/core/network/api_client.dart';
 import 'package:integra/core/storage/token_storage.dart';
+import 'package:integra/features/academic/data/academic_repository.dart';
+import 'package:integra/features/academic/data/api_academic_repository.dart';
+import 'package:integra/features/academic/data/fake_academic_repository.dart';
 import 'package:integra/features/auth/data/api_auth_repository.dart';
 import 'package:integra/features/auth/data/auth_repository.dart';
 import 'package:integra/features/auth/data/fake_auth_repository.dart';
@@ -61,4 +64,14 @@ final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
     return FakeProfileRepository(ref.watch(bancoFalsoProvider));
   }
   return ApiProfileRepository(ref.watch(apiClientProvider));
+});
+
+/// O pilar Acadêmico. Mesmo `BancoFalso` dos outros dois — e isso não é detalhe:
+/// publicar um comunicado restrito a um curso só faz sentido se o vínculo que o
+/// destrava for o mesmo que o "inserir CPF" criou.
+final academicRepositoryProvider = Provider<AcademicRepository>((ref) {
+  if (Ambiente.usarFalsos) {
+    return FakeAcademicRepository(ref.watch(bancoFalsoProvider));
+  }
+  return ApiAcademicRepository(ref.watch(apiClientProvider));
 });

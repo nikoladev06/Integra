@@ -17,9 +17,12 @@ T _$identity<T>(T value) => value;
 mixin _$PerfilDeUniversidade {
 
  String get id; String get nome; String get sigla;/// Se o leitor tem vínculo ativo com esta instituição. Decide se o menu
-/// oferece "inserir CPF" ou "encerrar vínculo".
- bool get temVinculo; bool get seguindo;/// Quantos têm vínculo ativo. Agregado, sem expor quem.
- int get totalDeAlunos; String? get bio; String? get fotoUrl;
+/// oferece "inserir CPF" ou "encerrar vínculo", e o texto do vazio de cada aba
+/// restrita.
+///
+/// **Não aparece como selo na tela.** "Você tem vínculo aqui" era redundante: o
+/// menu e as abas já respondem a mesma pergunta onde ela é feita.
+ bool get temVinculo; bool get seguindo; String? get bio; String? get fotoUrl;
 /// Create a copy of PerfilDeUniversidade
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -33,20 +36,20 @@ $PerfilDeUniversidadeCopyWith<PerfilDeUniversidade> get copyWith => _$PerfilDeUn
 @override
 bool operator ==(Object other) {
   final _this = this as PerfilDeUniversidade;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PerfilDeUniversidade&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.nome, _this.nome) || other.nome == _this.nome)&&(identical(other.sigla, _this.sigla) || other.sigla == _this.sigla)&&(identical(other.temVinculo, _this.temVinculo) || other.temVinculo == _this.temVinculo)&&(identical(other.seguindo, _this.seguindo) || other.seguindo == _this.seguindo)&&(identical(other.totalDeAlunos, _this.totalDeAlunos) || other.totalDeAlunos == _this.totalDeAlunos)&&(identical(other.bio, _this.bio) || other.bio == _this.bio)&&(identical(other.fotoUrl, _this.fotoUrl) || other.fotoUrl == _this.fotoUrl));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PerfilDeUniversidade&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.nome, _this.nome) || other.nome == _this.nome)&&(identical(other.sigla, _this.sigla) || other.sigla == _this.sigla)&&(identical(other.temVinculo, _this.temVinculo) || other.temVinculo == _this.temVinculo)&&(identical(other.seguindo, _this.seguindo) || other.seguindo == _this.seguindo)&&(identical(other.bio, _this.bio) || other.bio == _this.bio)&&(identical(other.fotoUrl, _this.fotoUrl) || other.fotoUrl == _this.fotoUrl));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as PerfilDeUniversidade;
-  return Object.hash(runtimeType,_this.id,_this.nome,_this.sigla,_this.temVinculo,_this.seguindo,_this.totalDeAlunos,_this.bio,_this.fotoUrl);
+  return Object.hash(runtimeType,_this.id,_this.nome,_this.sigla,_this.temVinculo,_this.seguindo,_this.bio,_this.fotoUrl);
 }
 
 @override
 String toString() {
   final _this = this as PerfilDeUniversidade;
-  return 'PerfilDeUniversidade(id: ${_this.id}, nome: ${_this.nome}, sigla: ${_this.sigla}, temVinculo: ${_this.temVinculo}, seguindo: ${_this.seguindo}, totalDeAlunos: ${_this.totalDeAlunos}, bio: ${_this.bio}, fotoUrl: ${_this.fotoUrl})';
+  return 'PerfilDeUniversidade(id: ${_this.id}, nome: ${_this.nome}, sigla: ${_this.sigla}, temVinculo: ${_this.temVinculo}, seguindo: ${_this.seguindo}, bio: ${_this.bio}, fotoUrl: ${_this.fotoUrl})';
 }
 
 
@@ -57,7 +60,7 @@ abstract mixin class $PerfilDeUniversidadeCopyWith<$Res>  {
   factory $PerfilDeUniversidadeCopyWith(PerfilDeUniversidade value, $Res Function(PerfilDeUniversidade) _then) = _$PerfilDeUniversidadeCopyWithImpl;
 @useResult
 $Res call({
- String id, String nome, String sigla, bool temVinculo, bool seguindo, int totalDeAlunos, String? bio, String? fotoUrl
+ String id, String nome, String sigla, bool temVinculo, bool seguindo, String? bio, String? fotoUrl
 });
 
 
@@ -74,15 +77,14 @@ class _$PerfilDeUniversidadeCopyWithImpl<$Res>
 
 /// Create a copy of PerfilDeUniversidade
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? nome = null,Object? sigla = null,Object? temVinculo = null,Object? seguindo = null,Object? totalDeAlunos = null,Object? bio = freezed,Object? fotoUrl = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? nome = null,Object? sigla = null,Object? temVinculo = null,Object? seguindo = null,Object? bio = freezed,Object? fotoUrl = freezed,}) {
   return _then(PerfilDeUniversidade(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,nome: null == nome ? _self.nome : nome // ignore: cast_nullable_to_non_nullable
 as String,sigla: null == sigla ? _self.sigla : sigla // ignore: cast_nullable_to_non_nullable
 as String,temVinculo: null == temVinculo ? _self.temVinculo : temVinculo // ignore: cast_nullable_to_non_nullable
 as bool,seguindo: null == seguindo ? _self.seguindo : seguindo // ignore: cast_nullable_to_non_nullable
-as bool,totalDeAlunos: null == totalDeAlunos ? _self.totalDeAlunos : totalDeAlunos // ignore: cast_nullable_to_non_nullable
-as int,bio: freezed == bio ? _self.bio : bio // ignore: cast_nullable_to_non_nullable
+as bool,bio: freezed == bio ? _self.bio : bio // ignore: cast_nullable_to_non_nullable
 as String?,fotoUrl: freezed == fotoUrl ? _self.fotoUrl : fotoUrl // ignore: cast_nullable_to_non_nullable
 as String?,
   ));
@@ -169,10 +171,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String nome,  String sigla,  bool temVinculo,  bool seguindo,  int totalDeAlunos,  String? bio,  String? fotoUrl)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String nome,  String sigla,  bool temVinculo,  bool seguindo,  String? bio,  String? fotoUrl)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _PerfilDeUniversidade() when $default != null:
-return $default(_that.id,_that.nome,_that.sigla,_that.temVinculo,_that.seguindo,_that.totalDeAlunos,_that.bio,_that.fotoUrl);case _:
+return $default(_that.id,_that.nome,_that.sigla,_that.temVinculo,_that.seguindo,_that.bio,_that.fotoUrl);case _:
   return orElse();
 
 }
@@ -190,10 +192,10 @@ return $default(_that.id,_that.nome,_that.sigla,_that.temVinculo,_that.seguindo,
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String nome,  String sigla,  bool temVinculo,  bool seguindo,  int totalDeAlunos,  String? bio,  String? fotoUrl)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String nome,  String sigla,  bool temVinculo,  bool seguindo,  String? bio,  String? fotoUrl)  $default,) {final _that = this;
 switch (_that) {
 case _PerfilDeUniversidade():
-return $default(_that.id,_that.nome,_that.sigla,_that.temVinculo,_that.seguindo,_that.totalDeAlunos,_that.bio,_that.fotoUrl);case _:
+return $default(_that.id,_that.nome,_that.sigla,_that.temVinculo,_that.seguindo,_that.bio,_that.fotoUrl);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -210,10 +212,10 @@ return $default(_that.id,_that.nome,_that.sigla,_that.temVinculo,_that.seguindo,
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String nome,  String sigla,  bool temVinculo,  bool seguindo,  int totalDeAlunos,  String? bio,  String? fotoUrl)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String nome,  String sigla,  bool temVinculo,  bool seguindo,  String? bio,  String? fotoUrl)?  $default,) {final _that = this;
 switch (_that) {
 case _PerfilDeUniversidade() when $default != null:
-return $default(_that.id,_that.nome,_that.sigla,_that.temVinculo,_that.seguindo,_that.totalDeAlunos,_that.bio,_that.fotoUrl);case _:
+return $default(_that.id,_that.nome,_that.sigla,_that.temVinculo,_that.seguindo,_that.bio,_that.fotoUrl);case _:
   return null;
 
 }
@@ -225,18 +227,20 @@ return $default(_that.id,_that.nome,_that.sigla,_that.temVinculo,_that.seguindo,
 @JsonSerializable()
 
 class _PerfilDeUniversidade implements PerfilDeUniversidade {
-  const _PerfilDeUniversidade({required this.id, required this.nome, required this.sigla, required this.temVinculo, required this.seguindo, this.totalDeAlunos = 0, this.bio, this.fotoUrl});
+  const _PerfilDeUniversidade({required this.id, required this.nome, required this.sigla, required this.temVinculo, required this.seguindo, this.bio, this.fotoUrl});
   factory _PerfilDeUniversidade.fromJson(Map<String, dynamic> json) => _$PerfilDeUniversidadeFromJson(json);
 
 @override final  String id;
 @override final  String nome;
 @override final  String sigla;
 /// Se o leitor tem vínculo ativo com esta instituição. Decide se o menu
-/// oferece "inserir CPF" ou "encerrar vínculo".
+/// oferece "inserir CPF" ou "encerrar vínculo", e o texto do vazio de cada aba
+/// restrita.
+///
+/// **Não aparece como selo na tela.** "Você tem vínculo aqui" era redundante: o
+/// menu e as abas já respondem a mesma pergunta onde ela é feita.
 @override final  bool temVinculo;
 @override final  bool seguindo;
-/// Quantos têm vínculo ativo. Agregado, sem expor quem.
-@override@JsonKey() final  int totalDeAlunos;
 @override final  String? bio;
 @override final  String? fotoUrl;
 
@@ -253,18 +257,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PerfilDeUniversidade&&(identical(other.id, id) || other.id == id)&&(identical(other.nome, nome) || other.nome == nome)&&(identical(other.sigla, sigla) || other.sigla == sigla)&&(identical(other.temVinculo, temVinculo) || other.temVinculo == temVinculo)&&(identical(other.seguindo, seguindo) || other.seguindo == seguindo)&&(identical(other.totalDeAlunos, totalDeAlunos) || other.totalDeAlunos == totalDeAlunos)&&(identical(other.bio, bio) || other.bio == bio)&&(identical(other.fotoUrl, fotoUrl) || other.fotoUrl == fotoUrl));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PerfilDeUniversidade&&(identical(other.id, id) || other.id == id)&&(identical(other.nome, nome) || other.nome == nome)&&(identical(other.sigla, sigla) || other.sigla == sigla)&&(identical(other.temVinculo, temVinculo) || other.temVinculo == temVinculo)&&(identical(other.seguindo, seguindo) || other.seguindo == seguindo)&&(identical(other.bio, bio) || other.bio == bio)&&(identical(other.fotoUrl, fotoUrl) || other.fotoUrl == fotoUrl));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,id,nome,sigla,temVinculo,seguindo,totalDeAlunos,bio,fotoUrl);
+    return Object.hash(runtimeType,id,nome,sigla,temVinculo,seguindo,bio,fotoUrl);
 }
 
 @override
 String toString() {
-    return 'PerfilDeUniversidade(id: $id, nome: $nome, sigla: $sigla, temVinculo: $temVinculo, seguindo: $seguindo, totalDeAlunos: $totalDeAlunos, bio: $bio, fotoUrl: $fotoUrl)';
+    return 'PerfilDeUniversidade(id: $id, nome: $nome, sigla: $sigla, temVinculo: $temVinculo, seguindo: $seguindo, bio: $bio, fotoUrl: $fotoUrl)';
 }
 
 
@@ -275,7 +279,7 @@ abstract mixin class _$PerfilDeUniversidadeCopyWith<$Res> implements $PerfilDeUn
   factory _$PerfilDeUniversidadeCopyWith(_PerfilDeUniversidade value, $Res Function(_PerfilDeUniversidade) _then) = __$PerfilDeUniversidadeCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String nome, String sigla, bool temVinculo, bool seguindo, int totalDeAlunos, String? bio, String? fotoUrl
+ String id, String nome, String sigla, bool temVinculo, bool seguindo, String? bio, String? fotoUrl
 });
 
 
@@ -292,15 +296,14 @@ class __$PerfilDeUniversidadeCopyWithImpl<$Res>
 
 /// Create a copy of PerfilDeUniversidade
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? nome = null,Object? sigla = null,Object? temVinculo = null,Object? seguindo = null,Object? totalDeAlunos = null,Object? bio = freezed,Object? fotoUrl = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? nome = null,Object? sigla = null,Object? temVinculo = null,Object? seguindo = null,Object? bio = freezed,Object? fotoUrl = freezed,}) {
   return _then(_PerfilDeUniversidade(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,nome: null == nome ? _self.nome : nome // ignore: cast_nullable_to_non_nullable
 as String,sigla: null == sigla ? _self.sigla : sigla // ignore: cast_nullable_to_non_nullable
 as String,temVinculo: null == temVinculo ? _self.temVinculo : temVinculo // ignore: cast_nullable_to_non_nullable
 as bool,seguindo: null == seguindo ? _self.seguindo : seguindo // ignore: cast_nullable_to_non_nullable
-as bool,totalDeAlunos: null == totalDeAlunos ? _self.totalDeAlunos : totalDeAlunos // ignore: cast_nullable_to_non_nullable
-as int,bio: freezed == bio ? _self.bio : bio // ignore: cast_nullable_to_non_nullable
+as bool,bio: freezed == bio ? _self.bio : bio // ignore: cast_nullable_to_non_nullable
 as String?,fotoUrl: freezed == fotoUrl ? _self.fotoUrl : fotoUrl // ignore: cast_nullable_to_non_nullable
 as String?,
   ));
@@ -592,6 +595,335 @@ as DateTime?,
 }
 
 
+}
+
+
+/// @nodoc
+mixin _$Matricula {
+
+ String get id; String get cpf; Curso get curso; DateTime get criadoEm;/// Se já existe conta com este CPF **e vínculo ativo** aqui.
+ bool get vinculada; Perfil? get usuario;
+/// Create a copy of Matricula
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$MatriculaCopyWith<Matricula> get copyWith => _$MatriculaCopyWithImpl<Matricula>(this as Matricula, _$identity);
+
+  /// Serializes this Matricula to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as Matricula;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Matricula&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.cpf, _this.cpf) || other.cpf == _this.cpf)&&(identical(other.curso, _this.curso) || other.curso == _this.curso)&&(identical(other.criadoEm, _this.criadoEm) || other.criadoEm == _this.criadoEm)&&(identical(other.vinculada, _this.vinculada) || other.vinculada == _this.vinculada)&&(identical(other.usuario, _this.usuario) || other.usuario == _this.usuario));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as Matricula;
+  return Object.hash(runtimeType,_this.id,_this.cpf,_this.curso,_this.criadoEm,_this.vinculada,_this.usuario);
+}
+
+@override
+String toString() {
+  final _this = this as Matricula;
+  return 'Matricula(id: ${_this.id}, cpf: ${_this.cpf}, curso: ${_this.curso}, criadoEm: ${_this.criadoEm}, vinculada: ${_this.vinculada}, usuario: ${_this.usuario})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $MatriculaCopyWith<$Res>  {
+  factory $MatriculaCopyWith(Matricula value, $Res Function(Matricula) _then) = _$MatriculaCopyWithImpl;
+@useResult
+$Res call({
+ String id, String cpf, Curso curso, DateTime criadoEm, bool vinculada, Perfil? usuario
+});
+
+
+$CursoCopyWith<$Res> get curso;$PerfilCopyWith<$Res>? get usuario;
+
+}
+/// @nodoc
+class _$MatriculaCopyWithImpl<$Res>
+    implements $MatriculaCopyWith<$Res> {
+  _$MatriculaCopyWithImpl(this._self, this._then);
+
+  final Matricula _self;
+  final $Res Function(Matricula) _then;
+
+/// Create a copy of Matricula
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? cpf = null,Object? curso = null,Object? criadoEm = null,Object? vinculada = null,Object? usuario = freezed,}) {
+  return _then(Matricula(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,cpf: null == cpf ? _self.cpf : cpf // ignore: cast_nullable_to_non_nullable
+as String,curso: null == curso ? _self.curso : curso // ignore: cast_nullable_to_non_nullable
+as Curso,criadoEm: null == criadoEm ? _self.criadoEm : criadoEm // ignore: cast_nullable_to_non_nullable
+as DateTime,vinculada: null == vinculada ? _self.vinculada : vinculada // ignore: cast_nullable_to_non_nullable
+as bool,usuario: freezed == usuario ? _self.usuario : usuario // ignore: cast_nullable_to_non_nullable
+as Perfil?,
+  ));
+}
+/// Create a copy of Matricula
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$CursoCopyWith<$Res> get curso {
+  
+  return $CursoCopyWith<$Res>(_self.curso, (value) {
+    return _then(_self.copyWith(curso: value));
+  });
+}/// Create a copy of Matricula
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$PerfilCopyWith<$Res>? get usuario {
+    if (_self.usuario == null) {
+    return null;
+  }
+
+  return $PerfilCopyWith<$Res>(_self.usuario!, (value) {
+    return _then(_self.copyWith(usuario: value));
+  });
+}
+}
+
+
+/// Adds pattern-matching-related methods to [Matricula].
+extension MatriculaPatterns on Matricula {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _Matricula value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _Matricula() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _Matricula value)  $default,){
+final _that = this;
+switch (_that) {
+case _Matricula():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _Matricula value)?  $default,){
+final _that = this;
+switch (_that) {
+case _Matricula() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String cpf,  Curso curso,  DateTime criadoEm,  bool vinculada,  Perfil? usuario)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _Matricula() when $default != null:
+return $default(_that.id,_that.cpf,_that.curso,_that.criadoEm,_that.vinculada,_that.usuario);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String cpf,  Curso curso,  DateTime criadoEm,  bool vinculada,  Perfil? usuario)  $default,) {final _that = this;
+switch (_that) {
+case _Matricula():
+return $default(_that.id,_that.cpf,_that.curso,_that.criadoEm,_that.vinculada,_that.usuario);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String cpf,  Curso curso,  DateTime criadoEm,  bool vinculada,  Perfil? usuario)?  $default,) {final _that = this;
+switch (_that) {
+case _Matricula() when $default != null:
+return $default(_that.id,_that.cpf,_that.curso,_that.criadoEm,_that.vinculada,_that.usuario);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _Matricula implements Matricula {
+  const _Matricula({required this.id, required this.cpf, required this.curso, required this.criadoEm, this.vinculada = false, this.usuario});
+  factory _Matricula.fromJson(Map<String, dynamic> json) => _$MatriculaFromJson(json);
+
+@override final  String id;
+@override final  String cpf;
+@override final  Curso curso;
+@override final  DateTime criadoEm;
+/// Se já existe conta com este CPF **e vínculo ativo** aqui.
+@override@JsonKey() final  bool vinculada;
+@override final  Perfil? usuario;
+
+/// Create a copy of Matricula
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$MatriculaCopyWith<_Matricula> get copyWith => __$MatriculaCopyWithImpl<_Matricula>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$MatriculaToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _Matricula&&(identical(other.id, id) || other.id == id)&&(identical(other.cpf, cpf) || other.cpf == cpf)&&(identical(other.curso, curso) || other.curso == curso)&&(identical(other.criadoEm, criadoEm) || other.criadoEm == criadoEm)&&(identical(other.vinculada, vinculada) || other.vinculada == vinculada)&&(identical(other.usuario, usuario) || other.usuario == usuario));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,id,cpf,curso,criadoEm,vinculada,usuario);
+}
+
+@override
+String toString() {
+    return 'Matricula(id: $id, cpf: $cpf, curso: $curso, criadoEm: $criadoEm, vinculada: $vinculada, usuario: $usuario)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$MatriculaCopyWith<$Res> implements $MatriculaCopyWith<$Res> {
+  factory _$MatriculaCopyWith(_Matricula value, $Res Function(_Matricula) _then) = __$MatriculaCopyWithImpl;
+@override @useResult
+$Res call({
+ String id, String cpf, Curso curso, DateTime criadoEm, bool vinculada, Perfil? usuario
+});
+
+
+@override $CursoCopyWith<$Res> get curso;@override $PerfilCopyWith<$Res>? get usuario;
+
+}
+/// @nodoc
+class __$MatriculaCopyWithImpl<$Res>
+    implements _$MatriculaCopyWith<$Res> {
+  __$MatriculaCopyWithImpl(this._self, this._then);
+
+  final _Matricula _self;
+  final $Res Function(_Matricula) _then;
+
+/// Create a copy of Matricula
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? cpf = null,Object? curso = null,Object? criadoEm = null,Object? vinculada = null,Object? usuario = freezed,}) {
+  return _then(_Matricula(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,cpf: null == cpf ? _self.cpf : cpf // ignore: cast_nullable_to_non_nullable
+as String,curso: null == curso ? _self.curso : curso // ignore: cast_nullable_to_non_nullable
+as Curso,criadoEm: null == criadoEm ? _self.criadoEm : criadoEm // ignore: cast_nullable_to_non_nullable
+as DateTime,vinculada: null == vinculada ? _self.vinculada : vinculada // ignore: cast_nullable_to_non_nullable
+as bool,usuario: freezed == usuario ? _self.usuario : usuario // ignore: cast_nullable_to_non_nullable
+as Perfil?,
+  ));
+}
+
+/// Create a copy of Matricula
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$CursoCopyWith<$Res> get curso {
+  
+  return $CursoCopyWith<$Res>(_self.curso, (value) {
+    return _then(_self.copyWith(curso: value));
+  });
+}/// Create a copy of Matricula
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$PerfilCopyWith<$Res>? get usuario {
+    if (_self.usuario == null) {
+    return null;
+  }
+
+  return $PerfilCopyWith<$Res>(_self.usuario!, (value) {
+    return _then(_self.copyWith(usuario: value));
+  });
+}
 }
 
 

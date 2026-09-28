@@ -88,9 +88,7 @@ class ApiProfileRepository implements ProfileRepository {
   Future<List<Universidade>> universidades({String? termo}) async {
     final itens = await _api.getLista(
       '/universidades',
-      query: {
-        if (termo != null && termo.isNotEmpty) 'q': termo,
-      },
+      query: {if (termo != null && termo.isNotEmpty) 'q': termo},
     );
     return itens
         .map((e) => Universidade.fromJson(e as Map<String, dynamic>))
@@ -154,4 +152,54 @@ class ApiProfileRepository implements ProfileRepository {
     // corpo para saber o que fazer.
     return seguir ? _api.put(caminho) : _api.delete(caminho);
   }
+
+  // ───────────────  administração da própria instituição  ───────────────
+
+  @override
+  Future<List<Curso>> meusCursos() async {
+    final itens = await _api.getLista('/universidades/me/cursos');
+    return itens.map((e) => Curso.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  @override
+  Future<Curso> criarCurso(String nome) async => Curso.fromJson(
+    await _api.post('/universidades/me/cursos', corpo: {'nome': nome.trim()}),
+  );
+
+  @override
+  Future<void> removerCurso(String cursoId) =>
+      _api.delete('/universidades/me/cursos/$cursoId');
+
+  @override
+  Future<List<Matricula>> minhasMatriculas({
+    String? cursoId,
+    String situacao = 'todas',
+  }) async {
+    final itens = await _api.getLista(
+      '/universidades/me/matriculas',
+      query: {'situacao': situacao, if (cursoId != null) 'cursoId': cursoId},
+    );
+    return itens
+        .map((e) => Matricula.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<Matricula> criarMatricula({
+    required String cpf,
+    required String cursoId,
+  }) async => Matricula.fromJson(
+    await _api.post(
+      '/universidades/me/matriculas',
+      // Normalizado aqui: o campo aceita pontuação para quem digita, e o serviço
+      // guarda só os 11 dígitos. A unicidade do CPF depende de os dois lados
+      // gravarem no mesmo formato — com e sem pontuação seriam duas linhas para
+      // a mesma pessoa, e nenhuma delas casaria com a conta dela.
+      corpo: {'cpf': normalizarCpf(cpf), 'cursoId': cursoId},
+    ),
+  );
+
+  @override
+  Future<void> removerMatricula(String matriculaId) =>
+      _api.delete('/universidades/me/matriculas/$matriculaId');
 }

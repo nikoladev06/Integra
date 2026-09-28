@@ -49,20 +49,19 @@ class CartaoDeFormacoes extends StatelessWidget {
   Widget build(BuildContext context) {
     final tema = ShadTheme.of(context);
 
+    // Sem subtítulo. A frase "não concede acesso a nada" dizia a regra certa no
+    // lugar errado: no perfil ela não responde a pergunta de ninguém, e repetia o
+    // que o cartão de vínculo já diz logo abaixo. Onde a regra é consequente —
+    // declarar uma formação, e o vazio das abas restritas do perfil da instituição
+    // — ela continua escrita.
     return ShadCard(
       title: const Text('Formação'),
-      description: const Text(
-        'Seu currículo, como você declara. Não concede acesso a nada.',
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: Espaco.sm),
           if (formacoes.isEmpty)
-            Text(
-              'Nenhuma formação declarada.',
-              style: tema.textTheme.muted,
-            )
+            Text('Nenhuma formação declarada.', style: tema.textTheme.muted)
           else
             for (final formacao in formacoes)
               _LinhaDeFormacao(
@@ -147,11 +146,10 @@ class CartaoDeVinculo extends StatelessWidget {
     final cores = tema.colorScheme;
     final atual = vinculo;
 
+    // Sem subtítulo, pelo mesmo motivo do cartão de formação: o conteúdo do cartão
+    // já diz o que ele é, com ou sem vínculo.
     return ShadCard(
       title: const Text('Vínculo institucional'),
-      description: const Text(
-        'O que dá acesso aos comunicados internos da sua instituição.',
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
