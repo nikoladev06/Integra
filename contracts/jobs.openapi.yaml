@@ -224,9 +224,11 @@ paths:
         outra, e faculdade não se candidata a nada.
 
         **Idempotente:** candidatar-se duas vezes devolve a candidatura que já
-        existe, com 200 em vez de 201. A unicidade é estrutural — chave primária
-        composta (vaga, candidato) —, então dois toques rápidos no botão não
-        criam duas linhas nem por condição de corrida.
+        existe, com 200 em vez de 201. A unicidade é estrutural — uma restrição
+        `UNIQUE (vaga, candidato)` no banco —, então dois toques rápidos no botão
+        não criam duas linhas nem por condição de corrida. A candidatura tem id
+        próprio porque `PATCH /jobs/candidaturas/{id}` precisa endereçá-la sem o
+        cliente montar um par de ids.
 
         Vaga **fechada** recusa com 409: é a única recusa deste serviço que o
         usuário resolve sozinho (não há o que corrigir, a vaga encerrou), e

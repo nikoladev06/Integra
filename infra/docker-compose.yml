@@ -9,6 +9,7 @@
 #   http://localhost:8080/health/user
 #   http://localhost:8080/health/academic
 #   http://localhost:8080/health/feed
+#   http://localhost:8080/health/jobs
 #   http://localhost:8081            painel do Traefik (só local)
 #   http://localhost:9001            console do MinIO (só local)
 
@@ -210,6 +211,37 @@ services:
       - traefik.http.routers.feed-health.middlewares=feed-health-path
       - traefik.http.routers.feed-health.service=feed
       - traefik.http.middlewares.feed-health-path.replacepath.path=/health
+    networks: [borda, interna]
+
+  jobs:
+    build:
+      context: ../services
+      args:
+        SERVICO: jobs
+    restart: unless-stopped
+    environment:
+      INTEGRA_AMBIENTE: ${INTEGRA_AMBIENTE:-local}
+      INTEGRA_JWT_SECRET: ${INTEGRA_JWT_SECRET}
+      INTEGRA_SERVICO_TOKEN: ${INTEGRA_SERVICO_TOKEN}
+      INTEGRA_USER_SERVICE_URL: http://user:8000
+      INTEGRA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Sem variáveis de storage: o jobs-service não emite URL de upload. Vaga é
+      # texto, e um campo de imagem aqui seria escopo que nenhuma tela pede.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      user:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.jobs.loadbalancer.server.port=8000
+      - traefik.http.routers.jobs.rule=PathPrefix(`/jobs`)
+      - traefik.http.routers.jobs.entrypoints=web
+      - traefik.http.routers.jobs-health.rule=Path(`/health/jobs`)
+      - traefik.http.routers.jobs-health.entrypoints=web
+      - traefik.http.routers.jobs-health.middlewares=jobs-health-path
+      - traefik.http.routers.jobs-health.service=jobs
+      - traefik.http.middlewares.jobs-health-path.replacepath.path=/health
     networks: [borda, interna]
 
   # Object Storage compatível com S3, para as URLs pré-assinadas de imagem. Trocar
