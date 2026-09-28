@@ -1,0 +1,598 @@
+openapi: 3.1.0
+
+info:
+  title: Integra — jobs-service
+  version: 1.0.0
+  description: |
+    Vagas de estágio e júnior publicadas por contas `empresa`, e candidaturas de
+    alunos. Fecha o rascunho `jobs.draft.yaml` (0.1.0-draft) na Sprint 5.
+
+    ## Por que vaga não é post
+
+    Uma vaga tem **estado** (aberta/fechada) e uma relação N:N com alunos que um
+    post não tem. Misturar as duas coisas num recurso só foi o que o protótipo
+    fez ao chamar tudo de `ProfessionalPost`, e o resultado era uma lista em que
+    "candidatar-se" e "curtir" eram a mesma ação com nomes diferentes.
+
+    ## O que o rascunho deixava em aberto, e como fechou
+
+    - **Como uma empresa é verificada?** Pelo cadastro institucional com CNPJ, que
+      já existe desde a Sprint 3 — e pela ativação manual (`ativar.py`). A rota
+      `POST /jobs/empresas` do rascunho **saiu**: ela duplicaria um cadastro que
+      o auth-service já faz. Publicar vaga exige conta `empresa` **ativada**, e a
+      ativação é consultada no banco do user-service, nunca num claim do token.
+    - **A empresa vê o perfil completo do candidato?** Não. Vê o mesmo resumo que
+      qualquer card mostra — nome, arroba e foto — e abre o perfil público pelo
+      app se quiser o resto. O currículo do aluno já é público no perfil dele; o
+      que a candidatura não pode virar é um canal para dado que o perfil esconde,
+      como CPF e telefone.
+    - **Estados da candidatura.** Dois: `enviada` e `visualizada`. O aluno cria,
+      a empresa marca visualizada, e ninguém volta atrás. Um terceiro estado
+      (aceita/recusada) foi deixado de fora de propósito: sem mensagens diretas —
+      que não têm serviço — "aceita" é um estado que não leva a lugar nenhum, e o
+      aluno ficaria esperando um contato que o app não sabe entregar.
+
+    ## Filtros
+
+    `tipo` e `modalidade`, que são colunas da vaga. **Não há filtro por
+    universidade nem por curso**, que o rascunho previa: ele exigiria a empresa
+    escolher cursos de instituições que ela não administra, e nenhuma tela da
+    Sprint 5 pede isso. Entra quando houver volume de vagas que justifique.
+
+servers:
+  - url: https://api.integra.app
+    description: produção (Oracle Cloud, atrás do Traefik)
+  - url: http://localhost:8080
+    description: desenvolvimento local (gateway do docker compose)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: vagas
+    description: |
+      Publica a conta `empresa` **ativada**; lê qualquer conta autenticada. Uma
+      vaga fechada continua legível por id — quem se candidatou precisa poder
+      abrir a vaga a que se candidatou —, mas sai da listagem padrão.
+  - name: candidaturas
+    description: |
+      O aluno se candidata; a empresa autora da vaga vê quem se candidatou e
+      marca como visualizada. Ninguém mais alcança nenhuma das duas listas.
+
+paths:
+  # ─────────────────────────────  vagas  ─────────────────────────────
+  /jobs/vagas:
+    get:
+      tags: [vagas]
+      summary: Lista vagas
+      operationId: listVagas
+      description: |
+        Abertas por padrão. `estado=fechada` existe para a empresa ver o que
+        publicou e encerrou — é a única tela que pede a lista de fechadas, e ela
+        é filtrada por `empresaId` de qualquer forma.
+
+        `candidaturaEnviada` vem preenchido em cada item, para o botão da lista
+        já nascer no estado certo. Sem ele a tela mostraria "candidatar-se" em
+        vagas a que o aluno já se candidatou, e descobriria o contrário só no
+        toque — com um 409 que o usuário leria como erro dele.
+      parameters:
+        - name: empresaId
+          in: query
+          description: As vagas de uma empresa — a aba de vagas do perfil dela.
+          schema: { type: string, format: uuid }
+        - name: tipo
+          in: query
+          schema: { $ref: '#/components/schemas/TipoDeVaga' }
+        - name: modalidade
+          in: query
+          schema: { $ref: '#/components/schemas/Modalidade' }
+        - name: estado
+          in: query
+          schema: { $ref: '#/components/schemas/EstadoDaVaga' }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página de vagas, da mais recente para a mais antiga
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaDeVagas' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '503': { $ref: '#/components/responses/DependenciaIndisponivel' }
+
+    post:
+      tags: [vagas]
+      summary: Publica uma vaga
+      operationId: createVaga
+      description: |
+        Exige conta `empresa` **ativada**. Aluno e faculdade recebem 403 pelo
+        token, sem I/O; empresa pendente recebe 403 depois da consulta ao
+        user-service (`conta_pendente`).
+
+        `empresaId` **não é campo do corpo** — é a conta autenticada. A mesma
+        disciplina do academic-service: se fosse campo, uma empresa publicaria
+        vaga no nome de outra.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PublicarVagaRequest' }
+      responses:
+        '201':
+          description: Publicada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vaga' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteEmpresa' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /jobs/vagas/{vagaId}:
+    parameters:
+      - { name: vagaId, in: path, required: true, schema: { type: string, format: uuid } }
+
+    get:
+      tags: [vagas]
+      summary: Detalhe da vaga
+      operationId: getVaga
+      description: |
+        Legível por qualquer conta autenticada, **inclusive fechada**: quem se
+        candidatou precisa poder abrir a vaga que aparece em "minhas
+        candidaturas". Esconder a fechada faria aquela lista apontar para 404.
+      responses:
+        '200':
+          description: A vaga
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vaga' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+    patch:
+      tags: [vagas]
+      summary: Edita ou encerra a vaga (só a empresa autora)
+      operationId: updateVaga
+      description: |
+        Campos omitidos ficam inalterados; corpo vazio responde 422.
+
+        **Encerrar é `estado: fechada`**, e não um `DELETE`: as candidaturas
+        recebidas continuam existindo, e o aluno continua vendo a vaga a que se
+        candidatou. Um `DELETE` que levasse as candidaturas junto apagaria o
+        histórico dos dois lados para encerrar um processo que terminou normal.
+
+        Reabrir (`estado: aberta`) é permitido e não recria candidatura nenhuma —
+        as que existiam continuam lá, porque nunca saíram.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EditarVagaRequest' }
+      responses:
+        '200':
+          description: Vaga atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vaga' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteEmpresa' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ──────────────────────────  candidaturas  ──────────────────────────
+  /jobs/vagas/{vagaId}/candidaturas:
+    parameters:
+      - { name: vagaId, in: path, required: true, schema: { type: string, format: uuid } }
+
+    get:
+      tags: [candidaturas]
+      summary: Candidaturas recebidas (só a empresa autora)
+      operationId: listCandidaturasDaVaga
+      description: |
+        Qualquer outra conta recebe **404**, e não 403: um 403 confirmaria que
+        existe uma vaga com aquele id e que ela tem candidatos. Mesma disciplina
+        das duas recusas do "inserir CPF" no user-service.
+
+        **Listar não marca como visualizada.** A transição é um `PATCH`
+        explícito — um `GET` que muda estado é o tipo de rota que o pre-fetch de
+        um cliente dispara sem ninguém ter aberto nada.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página de candidaturas, da mais recente para a mais antiga
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaDeCandidaturas' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+    post:
+      tags: [candidaturas]
+      summary: Candidata o aluno autenticado
+      operationId: createCandidatura
+      description: |
+        Exige conta `aluno` — empresa não se candidata à própria vaga nem à de
+        outra, e faculdade não se candidata a nada.
+
+        **Idempotente:** candidatar-se duas vezes devolve a candidatura que já
+        existe, com 200 em vez de 201. A unicidade é estrutural — chave primária
+        composta (vaga, candidato) —, então dois toques rápidos no botão não
+        criam duas linhas nem por condição de corrida.
+
+        Vaga **fechada** recusa com 409: é a única recusa deste serviço que o
+        usuário resolve sozinho (não há o que corrigir, a vaga encerrou), e
+        merece código próprio para a tela dizer isso em vez de "erro".
+
+        Não há corpo. Uma carta de apresentação seria outro campo, outra tela e
+        outro limite de tamanho, e nenhuma tela da Sprint 5 pede uma.
+      responses:
+        '201':
+          description: Candidatura criada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Candidatura' }
+        '200':
+          description: Já havia candidatura — devolve a existente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Candidatura' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteAluno' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409': { $ref: '#/components/responses/VagaFechada' }
+
+  /jobs/candidaturas/{candidaturaId}:
+    parameters:
+      - { name: candidaturaId, in: path, required: true, schema: { type: string, format: uuid } }
+
+    patch:
+      tags: [candidaturas]
+      summary: Marca a candidatura como visualizada (só a empresa autora da vaga)
+      operationId: updateCandidatura
+      description: |
+        O único estado que alguém transiciona, e num sentido só: `enviada` →
+        `visualizada`. Marcar de novo é idempotente e **não** move `visualizadaEm`
+        — a data é a da primeira vez, que é o que o aluno lê como "foi vista".
+
+        Voltar a `enviada` não existe. Um estado que anda para os dois lados
+        precisaria de histórico para significar algo, e histórico de leitura de
+        candidatura não é informação que o aluno ganhe nada em ver.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EditarCandidaturaRequest' }
+      responses:
+        '200':
+          description: Candidatura atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Candidatura' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /jobs/candidaturas/me:
+    get:
+      tags: [candidaturas]
+      summary: Minhas candidaturas e seus estados
+      operationId: listMinhasCandidaturas
+      description: |
+        A aba do aluno. Cada item traz a vaga inteira, e não só o id: a lista é
+        de "onde me candidatei", e um item sem título de vaga não é uma linha
+        legível.
+
+        **Registrada antes de `/jobs/candidaturas/{candidaturaId}`** na
+        implementação: os dois caminhos têm três segmentos, e a parametrizada
+        capturaria "me" como id, respondendo 422 ao validar o UUID sem nunca
+        chegar aqui.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página de candidaturas do aluno autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaDeCandidaturas' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '503': { $ref: '#/components/responses/DependenciaIndisponivel' }
+
+  /health:
+    get:
+      summary: Liveness e readiness
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: No ar, com o banco alcançável
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+        '503':
+          description: No ar, com dependência indisponível
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
+  schemas:
+    TipoDeVaga:
+      type: string
+      enum: [estagio, junior, trainee]
+      description: |
+        O recorte do Integra: quem está na faculdade ou acabou de sair. Não há
+        `pleno` nem `senior` — seriam vagas para quem o app não atende, e a
+        primeira delas na lista já muda o que o produto parece ser.
+
+    Modalidade:
+      type: string
+      enum: [presencial, hibrido, remoto]
+
+    EstadoDaVaga:
+      type: string
+      enum: [aberta, fechada]
+      description: |
+        `fechada` sai da listagem padrão mas continua legível por id: quem se
+        candidatou abre a vaga a partir de "minhas candidaturas".
+
+    EstadoDaCandidatura:
+      type: string
+      enum: [enviada, visualizada]
+      description: |
+        Dois estados, e o segundo é o que fecha o portão da Sprint 5 — "a empresa
+        vê a candidatura" precisa de algo que mude para a tela do aluno dizer
+        alguma coisa.
+
+        Não há `aceita` nem `recusada`. Sem mensagens diretas, que não têm
+        serviço, "aceita" é um estado que não leva a lugar nenhum: o aluno
+        ficaria esperando um contato que o app não sabe entregar.
+
+    EmpresaDaVaga:
+      type: object
+      required: [id, nome, username]
+      description: |
+        Resolvida na leitura contra o user-service, em lote — não copiada para
+        dentro da vaga. Mesma decisão do autor de post no feed-service.
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string, examples: ['Integra Tecnologia LTDA'] }
+        username: { type: string }
+        fotoUrl: { type: [string, 'null'] }
+
+    CandidatoResumo:
+      type: object
+      required: [id, nomeCompleto, username]
+      description: |
+        O que a empresa vê de quem se candidatou: **o mesmo resumo de qualquer
+        card**. Nem CPF, nem telefone, nem e-mail — a candidatura não pode virar
+        um canal para o que o perfil público esconde. Para o resto, a empresa
+        abre o perfil dele no app, onde o currículo já é público.
+      properties:
+        id: { type: string, format: uuid }
+        nomeCompleto: { type: string }
+        username: { type: string }
+        fotoUrl: { type: [string, 'null'] }
+
+    Vaga:
+      type: object
+      required:
+        [id, empresa, titulo, descricao, tipo, modalidade, estado,
+         totalDeCandidaturas, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        empresa: { $ref: '#/components/schemas/EmpresaDaVaga' }
+        titulo: { type: string, maxLength: 120 }
+        descricao: { type: string, maxLength: 5000 }
+        tipo: { $ref: '#/components/schemas/TipoDeVaga' }
+        modalidade: { $ref: '#/components/schemas/Modalidade' }
+        local:
+          type: [string, 'null']
+          maxLength: 120
+          description: |
+            Cidade e estado, em texto livre. Obrigatório quando a modalidade não
+            é `remoto` — uma vaga presencial sem lugar não é uma vaga, é um
+            anúncio incompleto. Em `remoto` é recusado, e não ignorado, pela
+            mesma razão do `cursoId` do acadêmico: aceito em silêncio, pareceria
+            uma restrição geográfica que não existe.
+        estado: { $ref: '#/components/schemas/EstadoDaVaga' }
+        totalDeCandidaturas:
+          type: integer
+          minimum: 0
+          description: |
+            Visível para todos. Ao contrário do "N alunos com vínculo" que saiu
+            do perfil da instituição, quantos concorrem a uma vaga é informação
+            de quem vai se candidatar — e a empresa publicou a vaga justamente
+            para ser concorrida.
+        candidaturaEnviada:
+          type: [boolean, 'null']
+          description: |
+            Se o leitor já se candidatou. Estado **por leitor**, calculado na
+            consulta, como `curtidoPorMim` no feed. Nulo para quem não é `aluno`:
+            uma empresa não tem o que responder aqui, e `false` a faria parecer
+            elegível.
+        criadoEm: { type: string, format: date-time }
+        editadoEm: { type: [string, 'null'], format: date-time }
+
+    Candidatura:
+      type: object
+      required: [id, vaga, candidato, estado, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        vaga: { $ref: '#/components/schemas/Vaga' }
+        candidato: { $ref: '#/components/schemas/CandidatoResumo' }
+        estado: { $ref: '#/components/schemas/EstadoDaCandidatura' }
+        criadoEm: { type: string, format: date-time }
+        visualizadaEm:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            A data da **primeira** vez. Marcar de novo não a move — é o que o
+            aluno lê como "foi vista", e uma data que anda a cada abertura da
+            empresa contaria outra coisa.
+
+    PublicarVagaRequest:
+      type: object
+      required: [titulo, descricao, tipo, modalidade]
+      properties:
+        titulo: { type: string, minLength: 1, maxLength: 120 }
+        descricao: { type: string, minLength: 1, maxLength: 5000 }
+        tipo: { $ref: '#/components/schemas/TipoDeVaga' }
+        modalidade: { $ref: '#/components/schemas/Modalidade' }
+        local:
+          type: [string, 'null']
+          maxLength: 120
+          description: Obrigatório fora de `remoto`; recusado em `remoto`.
+
+    EditarVagaRequest:
+      type: object
+      description: |
+        Ao menos um campo. As invariantes da publicação continuam valendo: mudar
+        para `remoto` **limpa** o local, em vez de deixar um endereço órfão, e
+        sair de `remoto` exige um — informado agora ou já presente na vaga.
+      properties:
+        titulo: { type: string, minLength: 1, maxLength: 120 }
+        descricao: { type: string, minLength: 1, maxLength: 5000 }
+        tipo: { $ref: '#/components/schemas/TipoDeVaga' }
+        modalidade: { $ref: '#/components/schemas/Modalidade' }
+        local: { type: [string, 'null'], maxLength: 120 }
+        estado: { $ref: '#/components/schemas/EstadoDaVaga' }
+
+    EditarCandidaturaRequest:
+      type: object
+      required: [estado]
+      description: |
+        Só `visualizada` é aceito. `enviada` responde 422 nomeando o campo — o
+        estado não volta atrás, e uma recusa genérica faria a tela parecer
+        quebrada.
+      properties:
+        estado: { type: string, enum: [visualizada] }
+
+    PaginaDeVagas:
+      type: object
+      required: [itens]
+      properties:
+        itens:
+          type: array
+          items: { $ref: '#/components/schemas/Vaga' }
+        proximoCursor: { type: [string, 'null'] }
+
+    PaginaDeCandidaturas:
+      type: object
+      required: [itens]
+      properties:
+        itens:
+          type: array
+          items: { $ref: '#/components/schemas/Candidatura' }
+        proximoCursor: { type: [string, 'null'] }
+
+    Health:
+      type: object
+      required: [status, service]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        service: { type: string, examples: ['jobs-service'] }
+        version: { type: string }
+        dependencies:
+          type: object
+          additionalProperties: { type: string, enum: [ok, unreachable] }
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        fields:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+  responses:
+    NaoAutenticado:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: nao_autenticado, message: 'Sessão expirada. Faça login novamente.' }
+
+    NaoEncontrado:
+      description: |
+        Inexistente — **ou de outra conta**, nas rotas que exigem ser a empresa
+        autora. Mesma resposta para os dois casos: um 403 confirmaria que existe
+        uma vaga com aquele id e que ela tem candidatos.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: nao_encontrado, message: 'Vaga não encontrada' }
+
+    SomenteEmpresa:
+      description: |
+        A rota exige conta `empresa` **ativada**. A checagem de ativação consulta
+        o banco do user-service, não um claim do token: no JWT, uma conta
+        desativada seguiria publicando por até 15 minutos.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            tipoErrado:
+              value: { code: permissao_negada, message: 'Sua conta não tem permissão para esta ação' }
+            contaPendente:
+              value:
+                code: conta_pendente
+                message: 'Sua conta ainda está em análise. Você será avisado quando for ativada.'
+
+    SomenteAluno:
+      description: Candidatar-se exige conta `aluno`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: permissao_negada, message: 'Sua conta não tem permissão para esta ação' }
+
+    VagaFechada:
+      description: |
+        A vaga foi encerrada entre a listagem e o toque no botão. Código próprio
+        porque não há campo a corrigir: a tela diz que a vaga encerrou, em vez de
+        pedir uma correção que não existe.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: vaga_fechada, message: 'Esta vaga não está mais recebendo candidaturas' }
+
+    ValidationError:
+      description: Corpo fora do formato; `fields` traz a mensagem por campo
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: validation_error
+            message: Verifique os campos destacados
+            fields: { local: ['Informe a cidade da vaga'] }
+
+    DependenciaIndisponivel:
+      description: |
+        O user-service não respondeu. Mensagem única para timeout, conexão
+        recusada e 5xx — para quem está na tela a ação é a mesma.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: dependencia_indisponivel
+            message: 'Não foi possível carregar os dados agora. Tente novamente em instantes.'
