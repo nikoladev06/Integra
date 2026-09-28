@@ -28,12 +28,16 @@ COPY shared/pyproject.toml shared/
 COPY auth/pyproject.toml auth/
 COPY user/pyproject.toml user/
 COPY academic/pyproject.toml academic/
+COPY feed/pyproject.toml feed/
+COPY jobs/pyproject.toml jobs/
 RUN uv sync --frozen --no-dev --no-install-workspace --package "integra-${SERVICO}"
 
 COPY shared/ shared/
 COPY auth/ auth/
 COPY user/ user/
 COPY academic/ academic/
+COPY feed/ feed/
+COPY jobs/ jobs/
 RUN uv sync --frozen --no-dev --package "integra-${SERVICO}"
 
 

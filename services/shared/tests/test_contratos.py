@@ -28,6 +28,7 @@ SERVICOS = {
     "auth": CONTRATOS / "auth.openapi.yaml",
     "user": CONTRATOS / "user.openapi.yaml",
     "academic": CONTRATOS / "academic.openapi.yaml",
+    "feed": CONTRATOS / "feed.openapi.yaml",
 }
 
 
@@ -52,6 +53,8 @@ def _app_do_servico(nome: str) -> FastAPI:
         from auth_service.main import app
     elif nome == "academic":
         from academic_service.main import app
+    elif nome == "feed":
+        from feed_service.main import app
     else:
         from user_service.main import app
     return app

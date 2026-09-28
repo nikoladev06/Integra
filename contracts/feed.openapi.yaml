@@ -56,10 +56,14 @@ info:
     - **Sem vínculo e sem seguir ninguém, o feed nasce vazio.** Mesma decisão do
       feed acadêmico, e pelo mesmo motivo: preencher com "os últimos posts de
       qualquer pessoa" exigiria um critério que ninguém escolheu.
-    - **A recomendação segue o vínculo ATUAL do autor**, e não o que ele tinha
-      ao publicar. Quem troca de faculdade leva os posts junto. É o preço de não
-      copiar o vínculo para dentro do post — e é o mesmo preço que o academic
-      paga por não denormalizar nome de instituição.
+    - **A recomendação segue o vínculo que o autor tinha AO PUBLICAR**, e não o
+      atual. Quem troca de faculdade deixa os posts antigos na comunidade
+      anterior. É deliberado, e é a única forma que não exige perguntar ao
+      user-service "quais usuários têm vínculo nestas universidades?" a cada
+      página — uma lista sem teto, que entraria num `IN` e cresceria com a base.
+      O que fica gravado no post é um **id**, não um nome: ids não envelhecem
+      visivelmente, e é a mesma escolha que o academic-service faz com
+      `universidadeId`.
 
     ## O que foi corrigido do protótipo, e continua valendo
 
@@ -443,6 +447,8 @@ components:
         não precisa de explicação para se ver no próprio feed, e um rótulo
         "recomendado" no que ele mesmo escreveu seria absurdo na tela.
 
+        Nulo fora do feed — ver a nota no campo `origem` de `Post`.
+
     TipoDeAutor:
       type: string
       enum: [aluno, empresa]
@@ -466,10 +472,24 @@ components:
         fotoUrl: { type: [string, 'null'] }
         tipo: { $ref: '#/components/schemas/TipoDeAutor' }
 
+    AutorDeComentario:
+      type: object
+      required: [id, nomeCompleto, username]
+      description: |
+        Quem comentou. **Sem `tipo`**, ao contrário de `AutorDePost`: nenhum escopo
+        filtra comentário, então o tipo do autor não é coluna de `comentarios` — e um
+        campo que o serviço não tem como preencher corretamente é pior que um campo
+        ausente. É o mesmo formato do `AutorDeComentario` do academic-service.
+      properties:
+        id: { type: string, format: uuid }
+        nomeCompleto: { type: string }
+        username: { type: string }
+        fotoUrl: { type: [string, 'null'] }
+
     Post:
       type: object
       required:
-        [id, autor, conteudo, origem, totalDeCurtidas, totalDeComentarios,
+        [id, autor, conteudo, totalDeCurtidas, totalDeComentarios,
          curtidoPorMim, criadoEm]
       properties:
         id: { type: string, format: uuid }
@@ -482,7 +502,16 @@ components:
             A URL final da imagem no storage, enviada pelo cliente depois do
             `PUT`. Nula na grande maioria dos posts — o card é de texto por
             padrão, e a imagem é o caso excepcional.
-        origem: { $ref: '#/components/schemas/OrigemNoFeed' }
+        origem:
+          oneOf:
+            - { $ref: '#/components/schemas/OrigemNoFeed' }
+            - { type: 'null' }
+          description: |
+            Preenchido **somente nas respostas do feed**
+            (`GET /feed/posts`). Nulo no detalhe, na publicação e na aba de
+            publicações de um perfil — fora do feed ninguém fez a pergunta "por
+            que estou vendo isto?", e responder exigiria uma ida ao user-service
+            por post aberto só para descobrir se o leitor segue o autor.
         totalDeCurtidas: { type: integer, minimum: 0 }
         totalDeComentarios: { type: integer, minimum: 0 }
         curtidoPorMim:
@@ -508,7 +537,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         postId: { type: string, format: uuid }
-        autor: { $ref: '#/components/schemas/AutorDePost' }
+        autor: { $ref: '#/components/schemas/AutorDeComentario' }
         conteudo: { type: string, maxLength: 1000 }
         podeRemover:
           type: boolean

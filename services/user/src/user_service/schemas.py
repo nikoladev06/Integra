@@ -320,3 +320,30 @@ class ResumoDePerfilOut(_Saida):
     nome_completo: str
     username: str
     foto_url: str | None = None
+
+
+class EscopoDoFeedOut(_Saida):
+    """As duas listas que decidem o feed profissional. Rota interna, Sprint 5.
+
+    `universidades` é vínculo + seguidas + a administrada — o mesmo conjunto do
+    escopo `geral` do feed acadêmico, e o que torna um autor **recomendado**.
+    `seguidos` são as contas que o leitor segue, pessoas e empresas.
+
+    Ids crus, sem nome nem foto: o feed-service vai usá-los num `IN`, e resolve os
+    cabeçalhos depois — em lote, só para quem sobrar na página.
+    """
+
+    universidades: list[UUID]
+    seguidos: list[UUID]
+
+
+class AtivacaoOut(_Saida):
+    """Se a conta pode agir, e o tipo dela. Rota interna, Sprint 5.
+
+    Existe para os outros serviços **não** chamarem `GET /users/interno/{userId}`,
+    que devolve CPF e CNPJ. Um serviço de posts não tem o que fazer com CPF, e um
+    tipo de saída que o carrega é um vazamento esperando uma rota nova.
+    """
+
+    ativa: bool
+    tipo: TipoConta

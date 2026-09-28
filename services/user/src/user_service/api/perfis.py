@@ -4,11 +4,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from user_service.api.deps import SessaoDep, TokenDeServico, UsuarioDep
 from user_service.schemas import (
+    AtivacaoOut,
     AtualizarPerfilIn,
     CriarUsuarioIn,
+    EscopoDoFeedOut,
     PaginaDePerfis,
     PerfilOut,
     PerfilPublicoOut,
@@ -135,11 +138,80 @@ async def universidades_do_escopo_interno(
     acadêmico da própria instituição nasceria vazio — a faculdade não veria o que
     acabou de publicar, porque conta institucional não tem vínculo.
     """
-    ids = [u.id for u in await seguir.listar_universidades(sessao, userId)]
-    propria = await instituicoes.universidade_administrada(sessao, userId)
+    return await _universidades_do_usuario(sessao, userId)
+
+
+async def _universidades_do_usuario(sessao: AsyncSession, usuario_id: UUID) -> list[UUID]:
+    """Vínculo + seguidas + a que a conta administra. **A única definição disso.**
+
+    Extraída na Sprint 5, quando o feed profissional passou a precisar do mesmo
+    conjunto para decidir o que é `recomendado`. Duas rotas internas a devolvem —
+    esta lista crua, para o academic, e dentro de `escopo-do-feed`, para o feed — e
+    duas escritas divergiriam: a mais fácil de errar é justamente a regra de que a
+    universidade do vínculo entra **sempre**, mesmo sem registro de seguir.
+    """
+    ids = [u.id for u in await seguir.listar_universidades(sessao, usuario_id)]
+    propria = await instituicoes.universidade_administrada(sessao, usuario_id)
     if propria is not None and propria not in ids:
         ids.insert(0, propria)
     return ids
+
+
+@router.get(
+    "/users/interno/{userId}/escopo-do-feed",
+    response_model=EscopoDoFeedOut,
+    include_in_schema=False,
+    dependencies=[TokenDeServico],
+)
+async def escopo_do_feed_interno(
+    userId: UUID,
+    sessao: SessaoDep,
+) -> EscopoDoFeedOut:
+    """As duas listas que decidem o feed profissional, numa chamada.
+
+    O feed-service precisa das duas **juntas**, a cada página: `seguidos` é o ramo
+    "quem eu sigo" e `universidades` é o ramo "quem me é recomendado". Duas rotas
+    seriam duas idas de rede por rolagem, para dados que nunca são pedidos
+    separadamente.
+
+    `universidades` sai da **mesma função** que alimenta o escopo `geral` do feed
+    acadêmico, e é por isso que ela foi extraída: duas definições de "as
+    universidades do usuário" divergiriam, e o sintoma seria um feed recomendando
+    por um critério enquanto o outro lista por outro.
+
+    Não concede nada, nas duas metades. No pilar profissional não há conteúdo
+    restrito para uma lista errada abrir — ela só faria o feed mostrar gente a
+    mais ou a menos.
+    """
+    return EscopoDoFeedOut(
+        universidades=await _universidades_do_usuario(sessao, userId),
+        seguidos=[u.id for u in await seguir.listar_usuarios(sessao, userId)],
+    )
+
+
+@router.get(
+    "/users/interno/{userId}/ativacao",
+    response_model=AtivacaoOut,
+    include_in_schema=False,
+    dependencies=[TokenDeServico],
+)
+async def ativacao_interna(
+    userId: UUID,
+    sessao: SessaoDep,
+) -> AtivacaoOut:
+    """Se a conta pode agir, e o tipo dela. **Só isso.**
+
+    Existe em vez de os outros serviços chamarem `GET /users/interno/{userId}`: esse
+    devolve `PerfilOut`, que traz CPF e CNPJ. Um serviço de posts não tem o que
+    fazer com CPF, e um tipo de saída que o carrega é um vazamento esperando uma
+    rota nova — a mesma disciplina que fez `PerfilPublicoOut` omitir o campo por
+    construção, em vez de removê-lo caso a caso.
+
+    O estado vem do **banco**, e não de um claim: no JWT, uma conta desativada
+    seguiria publicando por até 15 minutos.
+    """
+    usuario = await perfis.obter(sessao, userId)
+    return AtivacaoOut(ativa=usuario.ativa, tipo=usuario.tipo)
 
 
 @router.get(
