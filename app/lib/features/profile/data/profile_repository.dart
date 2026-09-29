@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:integra/features/profile/data/models/instituicao.dart';
+import 'package:integra/features/professional/data/models/post_profissional.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
 
 /// Contrato de perfil, formação, vínculo e busca, espelhando
@@ -27,6 +30,12 @@ abstract interface class ProfileRepository {
     String? username,
     String? telefone,
     String? bio,
+
+    /// A URL devolvida por [urlDeUploadDeAvatar], gravada **depois** de o `PUT` ter
+    /// sucesso. É o terceiro passo do fluxo de foto, separado de propósito: gravar
+    /// antes do envio apontaria o perfil para um objeto que talvez nunca chegue, e a
+    /// foto quebraria para todo mundo que abrisse o perfil.
+    String? fotoUrl,
   });
 
   // ────────────────────  formação declarada (currículo)  ────────────────────
@@ -144,4 +153,36 @@ abstract interface class ProfileRepository {
   /// verificada** — o caso comum é o aluno ter se formado, e ele realmente
   /// estudou lá.
   Future<void> removerMatricula(String matriculaId);
+
+  // ──────────────────────────  foto de perfil  ──────────────────────────
+  //
+  // O fluxo tem três passos e o serviço participa de um: ele assina a URL, o
+  // cliente faz `PUT` do arquivo direto no storage, e então grava a `fotoUrl` com
+  // [atualizarPerfil]. **Bytes de imagem nunca atravessam o user-service.**
+  //
+  // Os três passos são separados de propósito, em vez de um `trocarFoto(bytes)`
+  // que fizesse tudo: se o `PUT` falhar, o perfil **não** deve ter sido alterado.
+  // Um método único teria que decidir sozinho se grava antes (e a foto quebra para
+  // todos) ou depois (e aí são três passos de novo, só escondidos).
+
+  /// `POST /users/me/avatar/upload-url`.
+  ///
+  /// O caminho do objeto é escolhido pelo servidor a partir do id de quem pede — o
+  /// cliente não o informa, e por isso não há como pedir URL para o avatar de outra
+  /// pessoa e sobrescrever a foto dela.
+  ///
+  /// [tamanhoBytes] entra na assinatura: o storage recusa um `PUT` cujo
+  /// `content-length` não seja exatamente este. É o que faz o limite de 5 MB ser
+  /// real, e não uma declaração de boa vontade do cliente.
+  Future<UrlDeUpload> urlDeUploadDeAvatar({
+    required String contentType,
+    required int tamanhoBytes,
+  });
+
+  /// O `PUT` dos bytes na URL assinada. **Não passa pelo user-service.**
+  Future<void> enviarAvatar(
+    UrlDeUpload destino,
+    Uint8List bytes, {
+    required String contentType,
+  });
 }

@@ -100,7 +100,10 @@ void main() {
 
       // Antes de os dois falsos compartilharem estado, o perfil vinha de uma
       // fixture fixa: entrar como o Bruno mostrava o nome da Ana.
-      expect(find.text(Fixtures.perfilSemVinculo.nomeCompleto), findsOne);
+      //
+      // `findsWidgets` desde a Sprint 5: a aba de publicações abre por padrão e
+      // lista os posts dele, e o cabeçalho de cada card repete o nome.
+      expect(find.text(Fixtures.perfilSemVinculo.nomeCompleto), findsWidgets);
     });
 
     testWidgets('as quatro contas de exemplo aparecem no modo de fixtures', (
@@ -173,7 +176,10 @@ void main() {
 
       // O perfil veio do repositório, atravessando sessão → repositório → banco
       // → tela. É esta asserção que prova a costura ponta a ponta.
-      expect(find.text(Fixtures.perfilDemo.nomeCompleto), findsOne);
+      //
+      // `findsWidgets`: a aba de publicações abre por padrão e lista os posts dela,
+      // e o cabeçalho de cada card repete o nome.
+      expect(find.text(Fixtures.perfilDemo.nomeCompleto), findsWidgets);
 
       // O vínculo mora na aba de currículo, que não é a aberta por padrão — o
       // perfil abre nas publicações, como no Instagram.

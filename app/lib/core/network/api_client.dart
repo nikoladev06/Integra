@@ -65,6 +65,31 @@ class ApiClient {
   Future<Map<String, dynamic>> post(String caminho, {Object? corpo}) async =>
       _mapear(() => _dio.post<dynamic>(caminho, data: corpo));
 
+  /// `POST` que devolve **o corpo e o código**.
+  ///
+  /// Existe por causa de uma rota só: `POST /jobs/vagas/{id}/candidaturas` responde
+  /// 201 quando cria e 200 quando a candidatura já existia. É a única rota do
+  /// contrato em que o código de sucesso carrega informação — a tela confirma
+  /// "candidatura enviada" no 201 e fica calada no 200, porque avisar duas vezes faz
+  /// o usuário achar que se candidatou duas vezes.
+  ///
+  /// Não é um [post] com parâmetro opcional: quem chama tem que decidir se olha o
+  /// código, e um valor de retorno diferente força essa decisão em vez de deixar o
+  /// status disponível e ignorado em todas as outras chamadas.
+  Future<(Map<String, dynamic>, int)> postComStatus(
+    String caminho, {
+    Object? corpo,
+  }) async {
+    final resposta = await _executar(
+      () => _dio.post<dynamic>(caminho, data: corpo),
+    );
+    final dados = resposta.data;
+    return (
+      dados is Map<String, dynamic> ? dados : const <String, dynamic>{},
+      resposta.statusCode ?? 200,
+    );
+  }
+
   Future<Map<String, dynamic>> patch(String caminho, {Object? corpo}) async =>
       _mapear(() => _dio.patch<dynamic>(caminho, data: corpo));
 

@@ -178,15 +178,28 @@ void main() {
       );
     });
 
-    testWidgets('as duas opções da Sprint 5 aparecem datadas', (tester) async {
+    testWidgets('as três opções aparecem, cada uma com o seu impedimento', (
+      tester,
+    ) async {
+      // A aposta da Sprint 4 era que a tela não mudaria de forma quando os serviços
+      // entrassem, e não mudou: as três opções continuam nas mesmas posições. O que
+      // mudou é **de onde vem o impedimento** — era "entra na Sprint 5" para duas
+      // delas, e agora é o tipo de conta e a ativação, que são as regras do servidor.
       await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
       await tocar(tester, find.byTooltip('Publicar'));
 
+      expect(find.text('Comunicado da instituição'), findsOne);
       expect(find.text('Post no feed profissional'), findsOne);
       expect(find.text('Vaga'), findsOne);
-      // A tela não muda de forma na Sprint 5: as opções já estão no lugar, e o que
-      // muda é elas ficarem habilitadas.
-      expect(find.textContaining('entra na Sprint 5'), findsWidgets);
+
+      // A Ana é aluna: publica post, e não publica comunicado nem vaga. Cada recusa
+      // diz o **seu** motivo — "indisponível" sem motivo manda o usuário adivinhar.
+      expect(
+        find.textContaining('Só contas de faculdade publicam'),
+        findsOne,
+      );
+      expect(find.textContaining('Só contas de empresa publicam'), findsOne);
+      expect(find.textContaining('entra na Sprint 5'), findsNothing);
     });
   });
 }

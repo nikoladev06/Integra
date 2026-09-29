@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,8 +9,11 @@ import 'package:integra/core/storage/token_storage.dart';
 import 'package:integra/features/academic/data/fake_academic_repository.dart';
 import 'package:integra/features/auth/data/fake_auth_repository.dart';
 import 'package:integra/features/profile/data/banco_falso.dart';
+import 'package:integra/features/jobs/data/fake_jobs_repository.dart';
+import 'package:integra/features/professional/data/fake_feed_repository.dart';
 import 'package:integra/features/profile/data/fake_profile_repository.dart';
 import 'package:integra/main.dart';
+import 'package:integra/shared/domain/seletor_de_imagem.dart';
 
 /// Sobe o app inteiro com dependências controladas.
 ///
@@ -24,6 +29,7 @@ Future<BancoFalso> bombearApp(
   WidgetTester tester, {
   BancoFalso? banco,
   TokenStorage? tokens,
+  SeletorDeImagem? seletor,
 }) async {
   // Um banco por caso. Um singleton faria o usuário cadastrado num teste
   // aparecer na busca de outro, e a ordem dos testes passaria a importar.
@@ -38,6 +44,16 @@ Future<BancoFalso> bombearApp(
   tester.view.physicalSize = const Size(900, 2600);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
+
+  // Desmonta o que estiver na tela antes de montar o app.
+  //
+  // Sem isto, um teste que chama este helper duas vezes — trocando de conta no meio,
+  // que é como o portão da sprint é verificado — trava no `pumpAndSettle`: o
+  // `ShadToaster` e as transições do roteador da árvore anterior continuam animando
+  // enquanto a nova monta, e `pumpAndSettle` espera por uma tela que nunca fica
+  // parada. Uma árvore vazia no meio descarta os dois.
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump();
 
   await tester.pumpWidget(
     ProviderScope(
@@ -54,6 +70,18 @@ Future<BancoFalso> bombearApp(
         ),
         academicRepositoryProvider.overrideWithValue(
           FakeAcademicRepository(oBanco, latencia: Duration.zero),
+        ),
+        feedRepositoryProvider.overrideWithValue(
+          FakeFeedRepository(oBanco, latencia: Duration.zero),
+        ),
+        jobsRepositoryProvider.overrideWithValue(
+          FakeJobsRepository(oBanco, latencia: Duration.zero),
+        ),
+        // A galeria fala por canal de plataforma, que não existe em teste. Sem este
+        // override, toda tela com troca de foto ficaria fora do alcance dos testes —
+        // e são justamente as telas em que o fluxo de três passos pode dar errado.
+        seletorDeImagemProvider.overrideWithValue(
+          seletor ?? const SemImagem(),
         ),
         tokenStorageProvider.overrideWithValue(
           tokens ?? TokenStorageEmMemoria(),
@@ -77,6 +105,7 @@ Future<BancoFalso> bombearAppAutenticado(
   WidgetTester tester, {
   required String email,
   BancoFalso? banco,
+  SeletorDeImagem? seletor,
 }) async {
   final oBanco = banco ?? BancoFalso();
   oBanco.usuarioAtualId = oBanco.usuarios.values
@@ -86,6 +115,7 @@ Future<BancoFalso> bombearAppAutenticado(
   return bombearApp(
     tester,
     banco: oBanco,
+    seletor: seletor,
     tokens: TokenStorageEmMemoria(
       accessToken: 'token-valido',
       refreshToken: 'refresh-valido',
@@ -106,4 +136,36 @@ Future<void> abrirMenuDaConta(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(find.byTooltip('Opções da conta'));
   await tester.pumpAndSettle();
+}
+
+
+/// Um seletor que nunca escolhe nada — o padrão em teste.
+///
+/// Devolver nulo é o mesmo que o usuário cancelar, e é o que as telas tratam sem
+/// avisar: cancelar não é erro. Um seletor que lançasse faria toda tela com botão de
+/// foto falhar por um caminho que o teste não estava exercitando.
+class SemImagem implements SeletorDeImagem {
+  const SemImagem();
+
+  @override
+  Future<ImagemEscolhida?> escolher() async => null;
+}
+
+/// Um seletor que devolve sempre os mesmos bytes.
+///
+/// Os bytes não são uma imagem de verdade, e não precisam ser: nada é decodificado no
+/// caminho que este seletor exercita — o fluxo pede a URL, envia os bytes e grava a
+/// `imagemUrl`. O `Image.memory` da pré-visualização falha em renderizar, e o
+/// `errorBuilder` do card é justamente o ramo que o teste quer poder alcançar.
+class ImagemFixa implements SeletorDeImagem {
+  const ImagemFixa({this.tamanho = 1024, this.contentType = 'image/jpeg'});
+
+  final int tamanho;
+  final String contentType;
+
+  @override
+  Future<ImagemEscolhida?> escolher() async => ImagemEscolhida(
+    bytes: Uint8List.fromList(List<int>.filled(tamanho, 7)),
+    contentType: contentType,
+  );
 }

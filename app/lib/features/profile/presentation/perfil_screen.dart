@@ -7,6 +7,8 @@ import 'package:integra/core/router/app_router.dart';
 import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/core/theme/tokens.dart';
 import 'package:integra/features/auth/presentation/sessao_controller.dart';
+import 'package:integra/features/professional/presentation/profissional_providers.dart';
+import 'package:integra/features/professional/presentation/widgets/post_profissional_card.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
 import 'package:integra/features/profile/presentation/widgets/formacoes_e_vinculo.dart';
 import 'package:integra/shared/widgets/abas_de_icone.dart';
@@ -119,7 +121,7 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
             const _Conteudo(child: _PostsDaInstituicao())
           else
             switch (_aba) {
-              AbaDoPerfil.posts => const _Conteudo(child: _PostsDaPessoa()),
+              AbaDoPerfil.posts => _Conteudo(child: _PostsDaPessoa(userId: perfil.id)),
               AbaDoPerfil.curriculo => _Conteudo(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -203,21 +205,61 @@ class _MenuDaConta extends ConsumerWidget {
   }
 }
 
-/// As publicações de uma pessoa. Não existem ainda.
-class _PostsDaPessoa extends StatelessWidget {
-  const _PostsDaPessoa();
+/// As publicações de uma pessoa. **Deixaram de ser um vazio honesto na Sprint 5.**
+///
+/// Usa `GET /feed/usuarios/{id}/posts`, e não o feed: o feed é limitado ao conjunto do
+/// leitor — quem ele segue e quem lhe é recomendado —, e o próprio perfil não está
+/// nele por definição. A rota separada é o que faz esta aba mostrar o que a pessoa
+/// publicou, e não o que ela veria.
+///
+/// Os cards vêm **compactos**: aqui eles são prévia, e o que se espera do toque é
+/// abrir o post, não curtir. `origem` chega nula do servidor pelo mesmo motivo — a
+/// pergunta "por que estou vendo isto?" não se faz numa lista que a pessoa pediu por
+/// nome.
+class _PostsDaPessoa extends ConsumerWidget {
+  const _PostsDaPessoa({required this.userId});
+
+  final String userId;
 
   @override
-  Widget build(BuildContext context) => const EstadoVazio(
-    icone: LucideIcons.layoutGrid,
-    titulo: 'Você ainda não publicou nada',
-    // Vazio honesto: posts de pessoa são do `feed-service`, que entra na Sprint 5.
-    // Uma grade de exemplos esconderia que o serviço não existe.
-    descricao:
-        'Seus posts no feed profissional aparecem aqui. O serviço que os guarda '
-        'entra na Sprint 5 — até lá, o botão de publicar no rodapé mostra o que '
-        'já dá para publicar.',
-  );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tema = ShadTheme.of(context);
+    final posts = ref.watch(postsDoUsuarioProvider(userId));
+
+    return switch (posts) {
+      AsyncError() => EstadoVazio(
+        icone: LucideIcons.cloudOff,
+        titulo: 'Não foi possível carregar',
+        descricao: 'Suas publicações não vieram agora. Tente de novo em instantes.',
+        acao: ShadButton.outline(
+          onPressed: () => ref.invalidate(postsDoUsuarioProvider(userId)),
+          child: const Text('Tentar de novo'),
+        ),
+      ),
+      AsyncLoading() => const Padding(
+        padding: EdgeInsets.all(Espaco.xl),
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      AsyncData(:final value) when value.itens.isEmpty => EstadoVazio(
+        icone: LucideIcons.layoutGrid,
+        cor: tema.colorScheme.profissional,
+        titulo: 'Você ainda não publicou nada',
+        descricao:
+            'Seus posts no feed profissional aparecem aqui. Publique pelo botão '
+            'do rodapé ou pelo lápis no topo do feed.',
+      ),
+      AsyncData(:final value) => Column(
+        children: [
+          for (final post in value.itens)
+            PostProfissionalCard(
+              post: post,
+              compacto: true,
+              aoTocar: () => context.push(Rotas.postProfissional(post.id)),
+            ),
+        ],
+      ),
+    };
+  }
 }
 
 /// As publicações de uma conta institucional: existem, mas moram noutro lugar.

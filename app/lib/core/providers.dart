@@ -12,6 +12,12 @@ import 'package:integra/features/auth/data/fake_auth_repository.dart';
 import 'package:integra/features/profile/data/api_profile_repository.dart';
 import 'package:integra/features/profile/data/banco_falso.dart';
 import 'package:integra/features/profile/data/fake_profile_repository.dart';
+import 'package:integra/features/jobs/data/api_jobs_repository.dart';
+import 'package:integra/features/jobs/data/fake_jobs_repository.dart';
+import 'package:integra/features/jobs/data/jobs_repository.dart';
+import 'package:integra/features/professional/data/api_feed_repository.dart';
+import 'package:integra/features/professional/data/fake_feed_repository.dart';
+import 'package:integra/features/professional/data/feed_repository.dart';
 import 'package:integra/features/profile/data/profile_repository.dart';
 
 /// A injeção de dependência do app.
@@ -74,4 +80,24 @@ final academicRepositoryProvider = Provider<AcademicRepository>((ref) {
     return FakeAcademicRepository(ref.watch(bancoFalsoProvider));
   }
   return ApiAcademicRepository(ref.watch(apiClientProvider));
+});
+
+/// O pilar Profissional. Mesmo `BancoFalso` dos outros — e aqui isso importa por um
+/// motivo que nao existia no Academico: o feed profissional recomenda por
+/// **universidade do vinculo**, e o vinculo e o que o "inserir CPF" da tela de
+/// instituicao cria. Com estados separados, recomendacao nunca funcionaria no falso.
+final feedRepositoryProvider = Provider<FeedRepository>((ref) {
+  if (Ambiente.usarFalsos) {
+    return FakeFeedRepository(ref.watch(bancoFalsoProvider));
+  }
+  return ApiFeedRepository(ref.watch(apiClientProvider));
+});
+
+/// A area de vagas. Mesmo `BancoFalso`: a candidatura liga uma conta `empresa` a uma
+/// conta `aluno`, e as duas vivem no mapa de usuarios que os outros falsos usam.
+final jobsRepositoryProvider = Provider<JobsRepository>((ref) {
+  if (Ambiente.usarFalsos) {
+    return FakeJobsRepository(ref.watch(bancoFalsoProvider));
+  }
+  return ApiJobsRepository(ref.watch(apiClientProvider));
 });

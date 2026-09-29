@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:integra/core/error/failure.dart';
+import 'package:integra/features/professional/data/models/post_profissional.dart';
 import 'package:integra/features/profile/data/banco_falso.dart';
 import 'package:integra/features/profile/data/models/instituicao.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
@@ -60,6 +63,7 @@ class FakeProfileRepository implements ProfileRepository {
     String? username,
     String? telefone,
     String? bio,
+    String? fotoUrl,
   }) async {
     await _esperar();
 
@@ -84,6 +88,7 @@ class FakeProfileRepository implements ProfileRepository {
       username: username?.toLowerCase() ?? eu.username,
       telefone: telefone ?? eu.telefone,
       bio: bio ?? eu.bio,
+      fotoUrl: fotoUrl ?? eu.fotoUrl,
       alteradoEm: DateTime.now().toUtc(),
     );
     _banco.salvar(atualizado);
@@ -654,4 +659,64 @@ class FakeProfileRepository implements ProfileRepository {
       _banco.salvar(dono.copyWith(vinculo: null));
     }
   }
+
+  // ──────────────────────────  foto de perfil  ──────────────────────────
+
+  @override
+  Future<UrlDeUpload> urlDeUploadDeAvatar({
+    required String contentType,
+    required int tamanhoBytes,
+  }) async {
+    await _esperar();
+    final conta = _banco.usuarioAtual;
+
+    // As duas validacoes do servico, com as mesmas mensagens. Sem elas, escolher um
+    // GIF de 20 MB pareceria funcionar no modo de fixtures e falharia contra a API.
+    final extensao = _extensoesDeImagem[contentType];
+    if (extensao == null) {
+      throw const FalhaDeValidacao(
+        campos: {
+          'contentType': ['Envie uma imagem JPEG, PNG ou WebP'],
+        },
+      );
+    }
+    if (tamanhoBytes <= 0 || tamanhoBytes > _tamanhoMaximoDeImagem) {
+      throw const FalhaDeValidacao(
+        campos: {
+          'tamanhoBytes': ['A imagem deve ter ate 5 MB'],
+        },
+      );
+    }
+
+    // O caminho e derivado do id de quem pede, como no servidor: o cliente nao o
+    // escolhe, e por isso nao ha como sobrescrever a foto de outra pessoa.
+    final chave = 'avatares/${conta.id}/${_banco.proximoId('avatar')}.$extensao';
+    return UrlDeUpload(
+      // Um host que nao existe, de proposito: nada e enviado no modo de fixtures, e
+      // uma URL que parecesse valida convidaria alguem a tentar abri-la.
+      uploadUrl: 'https://storage.invalido/$chave?assinatura=falsa',
+      urlFinal: 'https://storage.invalido/$chave',
+      expiraEm: DateTime.now().add(const Duration(minutes: 5)),
+    );
+  }
+
+  @override
+  Future<void> enviarAvatar(
+    UrlDeUpload destino,
+    Uint8List bytes, {
+    required String contentType,
+  }) async {
+    // Nao ha storage no modo de fixtures. Responder sucesso e o certo: a tela
+    // continua o fluxo e grava a `fotoUrl` no perfil, entao a troca de foto e
+    // demonstravel sem MinIO — e o avatar mostra imagem quebrada, que e honesto,
+    // porque o arquivo realmente nao foi a lugar nenhum.
+    await _esperar();
+  }
+
+  static const _tamanhoMaximoDeImagem = 5 * 1024 * 1024;
+  static const _extensoesDeImagem = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+  };
 }
