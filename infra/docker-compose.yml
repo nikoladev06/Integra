@@ -254,7 +254,19 @@ services:
   # para o Object Storage da Oracle é endpoint e credencial em `.env` — nenhuma linha
   # de código, porque a API é a mesma e o serviço só ASSINA.
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # ponytail: `latest` é a única coisa honesta aqui, e é o único `latest` do
+    # arquivo — Postgres, Traefik e a imagem dos serviços estão pinados.
+    #
+    # O MinIO versiona por `RELEASE.<data>`, e **nenhuma tag dessas foi verificada**:
+    # o Docker Hub está inalcançável da máquina em que isto foi escrito (TLS
+    # handshake timeout até num `docker pull hello-world`). Pinar uma data que eu não
+    # consegui baixar seria pior que `latest`: daria aparência de reprodutibilidade a
+    # um palpite, e quem subisse a stack descobriria a tag errada no primeiro
+    # `compose up`.
+    #
+    # Upgrade: quem tiver rede para o Hub troca pelos dois `RELEASE.*` que de fato
+    # baixarem, aqui e na linha do `mc` abaixo.
+    image: minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -278,7 +290,8 @@ services:
   # daemon, e deixar o contêiner de pé só para ele ter status "up" esconderia a
   # falha da criação do bucket atrás de um restart infinito.
   minio-init:
-    image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+    # ponytail: idem — ver a nota da tag do `minio` acima.
+    image: minio/mc:latest
     depends_on:
       minio:
         condition: service_healthy

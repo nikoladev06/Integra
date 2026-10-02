@@ -42,9 +42,7 @@ from jobs_service.services import vagas
 
 def nao_encontrada() -> AppError:
     """Inexistente, ou de outra pessoa/empresa. Mesma resposta para os dois."""
-    return AppError(
-        code="nao_encontrado", message="Candidatura não encontrada", status_code=404
-    )
+    return AppError(code="nao_encontrado", message="Candidatura não encontrada", status_code=404)
 
 
 def vaga_fechada() -> AppError:
@@ -160,9 +158,7 @@ def _consulta() -> Select:
         .where(outra.vaga_id == Candidatura.vaga_id)
         .scalar_subquery()
     )
-    return select(Candidatura, total).order_by(
-        Candidatura.criado_em.desc(), Candidatura.id.desc()
-    )
+    return select(Candidatura, total).order_by(Candidatura.criado_em.desc(), Candidatura.id.desc())
 
 
 async def total_da_vaga(sessao: AsyncSession, vaga_id: UUID) -> int:

@@ -69,12 +69,20 @@ async def cliente():
     problema, que é a mesma nota que o `conftest.py` da raiz já traz sobre criar
     uma engine por teste.
 
-    **`TRUNCATE` no fim, e não transação desfeita.** O fixture compartilhado
-    embrulha o teste numa transação e a desfaz, mas aqui quem abre transação é o
-    app, do outro lado do portal — não há como o teste participar dela. O
-    `TRUNCATE` é seguro neste schema por um motivo específico: `academic` **não
-    tem seed**. No schema `user` ele apagaria a FATEC semeada, e é justamente por
-    isso que lá a escolha foi outra.
+    **`TRUNCATE`, e não transação desfeita.** O fixture compartilhado embrulha o
+    teste numa transação e a desfaz, mas aqui quem abre transação é o app, do outro
+    lado do portal — não há como o teste participar dela. O `TRUNCATE` é seguro
+    neste schema por um motivo específico: `academic` **não tem seed**. No schema
+    `user` ele apagaria a FATEC semeada, e é justamente por isso que lá a escolha
+    foi outra.
+
+    **Nas duas pontas, e a de entrada não é redundante.** No fim, para o próximo
+    teste encontrar o schema limpo; no começo, porque o fim não basta: os roteiros
+    de portão (`infra/portao_*.py`) escrevem neste mesmo banco de desenvolvimento e
+    não limpam nada, de propósito. Sem a limpeza de entrada, rodar um portão e
+    depois a suíte derruba o **primeiro** teste do arquivo — e só ele, porque o
+    teardown dele limpa para os outros. O sintoma é um flake que aparece uma vez e
+    cujo culpado parece ser o teste.
     """
     if not DSN or DSN.startswith("postgresql+asyncpg://u:p@"):
         pytest.skip(
@@ -89,6 +97,10 @@ async def cliente():
                 await conexao.execute(text("SELECT 1"))
         except Exception as erro:
             pytest.skip(f"Postgres indisponível: {type(erro).__name__}")
+
+        # Entra limpo: ver a nota do docstring sobre os roteiros de portão.
+        async with motor_do_teste.begin() as conexao:
+            await conexao.execute(text("TRUNCATE academic.posts CASCADE"))
 
         async def _sessao_por_requisicao():
             motor = create_async_engine(DSN)

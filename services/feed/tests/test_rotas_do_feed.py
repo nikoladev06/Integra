@@ -49,12 +49,15 @@ DSN = settings.database_url or ""
 
 @pytest_asyncio.fixture
 async def cliente():
-    """`TestClient` com uma engine por requisição, e `TRUNCATE` ao fim.
+    """`TestClient` com uma engine por requisição, e `TRUNCATE` nas duas pontas.
 
     As duas escolhas são as do teste do academic-service, e a nota lá explica as
     duas: o `TestClient` roda o app num event loop próprio, e uma engine async
     guarda um pool preso ao loop em que nasceu. `TRUNCATE` é seguro porque o schema
     `feed` **não tem seed** — no schema `user` ele apagaria a FATEC semeada.
+
+    **Nas duas pontas**, como no academic-service: o fim deixa limpo para o próximo
+    teste, e o começo protege do que os roteiros de portão deixam neste mesmo banco.
     """
     if not DSN or DSN.startswith("postgresql+asyncpg://u:p@"):
         pytest.skip(
@@ -69,6 +72,10 @@ async def cliente():
                 await conexao.execute(text("SELECT 1"))
         except Exception as erro:
             pytest.skip(f"Postgres indisponível: {type(erro).__name__}")
+
+        # Entra limpo: ver a nota do docstring sobre os roteiros de portão.
+        async with motor_do_teste.begin() as conexao:
+            await conexao.execute(text("TRUNCATE feed.posts CASCADE"))
 
         async def _sessao_por_requisicao():
             motor = create_async_engine(DSN)

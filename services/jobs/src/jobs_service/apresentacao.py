@@ -15,7 +15,6 @@ empresa (dona da vaga) e um candidato, e a rota interna do user-service não dis
 são todas contas. Os dois conjuntos de ids entram na mesma chamada.
 """
 
-
 from integra_shared.interno import ResumoDePerfil
 from integra_shared.security import UsuarioAutenticado
 from jobs_service import usuarios

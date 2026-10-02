@@ -36,10 +36,13 @@ DSN = settings.database_url or ""
 
 @pytest_asyncio.fixture
 async def cliente():
-    """`TestClient` com engine por requisição, e `TRUNCATE` ao fim.
+    """`TestClient` com engine por requisição, e `TRUNCATE` nas duas pontas.
 
     As duas escolhas são as dos outros serviços; a nota do teste do academic-service
     explica as duas. `TRUNCATE` é seguro porque o schema `jobs` não tem seed.
+
+    **Nas duas pontas**, como no academic-service: o fim deixa limpo para o próximo
+    teste, e o começo protege do que os roteiros de portão deixam neste mesmo banco.
     """
     if not DSN or DSN.startswith("postgresql+asyncpg://u:p@"):
         pytest.skip(
@@ -54,6 +57,10 @@ async def cliente():
                 await conexao.execute(text("SELECT 1"))
         except Exception as erro:
             pytest.skip(f"Postgres indisponível: {type(erro).__name__}")
+
+        # Entra limpo: ver a nota do docstring sobre os roteiros de portão.
+        async with motor_do_teste.begin() as conexao:
+            await conexao.execute(text("TRUNCATE jobs.vagas CASCADE"))
 
         async def _sessao_por_requisicao():
             motor = create_async_engine(DSN)
@@ -217,9 +224,7 @@ def test_a_faculdade_nao_publica_vaga(cliente):
 def test_empresa_pendente_nao_publica(cliente):
     """A checagem vem do banco, não do token: no JWT ela publicaria por 15 minutos."""
     with _user_service(ativas=False):
-        resposta = cliente.post(
-            "/jobs/vagas", json=VAGA, headers=_token(EMPRESA, tipo="empresa")
-        )
+        resposta = cliente.post("/jobs/vagas", json=VAGA, headers=_token(EMPRESA, tipo="empresa"))
     assert resposta.status_code == 403
     assert resposta.json()["code"] == "conta_pendente"
 
@@ -502,9 +507,7 @@ def test_encerrar_a_vaga_nao_apaga_as_candidaturas(cliente):
         cliente.post(f"/jobs/vagas/{vaga['id']}/candidaturas", headers=_token(ALUNO))
         cabecalho = _token(EMPRESA, tipo="empresa")
         cliente.patch(f"/jobs/vagas/{vaga['id']}", json={"estado": "fechada"}, headers=cabecalho)
-        recebidas = cliente.get(
-            f"/jobs/vagas/{vaga['id']}/candidaturas", headers=cabecalho
-        ).json()
+        recebidas = cliente.get(f"/jobs/vagas/{vaga['id']}/candidaturas", headers=cabecalho).json()
     assert len(recebidas["itens"]) == 1
 
 

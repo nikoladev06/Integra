@@ -82,9 +82,11 @@ jobs:
       # com um conjunto de dependências que ninguém tem na máquina.
       - run: uv sync --all-packages --frozen
 
-      # `../infra` entra no escopo por causa de `portao_academico.py`, o roteiro do
-      # portão do pilar Acadêmico: ele mora ao lado do compose porque precisa da
-      # stack no ar, e fora do escopo do lint apodreceria sem ninguém notar.
+      # `../infra` entra no escopo por causa dos roteiros de portão —
+      # `portao_academico.py` e `portao_profissional.py`. Eles moram ao lado do
+      # compose porque precisam da stack no ar, e **não rodam na CI**: fora do
+      # escopo do lint apodreceriam sem ninguém notar, que é o pior estado para um
+      # roteiro que alguém vai executar à mão no fim de uma sprint.
       - run: uv run ruff check . ../infra
 
       - run: uv run ruff format --check . ../infra
@@ -92,11 +94,20 @@ jobs:
       # As migrações constroem o schema que os testes de integração usam. Rodar
       # aqui também prova que elas aplicam numa base vazia — o caminho que a VM
       # percorre no deploy, e que ninguém exercita rodando local.
+      #
+      # Os serviços saem de `*/alembic.ini`, e não de uma lista escrita aqui. A troca
+      # foi feita porque a lista à mão **já tinha derivado**: `feed` e `jobs` nasceram
+      # na Sprint 5 e ficaram de fora deste passo e do seguinte. Era a falha mais
+      # discreta possível — a CI continuava verde, com dois schemas que ela nunca
+      # construiu e dois `alembic check` que ela nunca rodou.
+      #
+      # O predicado é exato: um serviço tem migrações se, e só se, tem `alembic.ini`.
+      # É por isso que `shared` fica fora sem precisar de exceção.
       - name: Migrações e seed
         run: |
-          (cd user && uv run --project .. alembic upgrade head)
-          (cd auth && uv run --project .. alembic upgrade head)
-          (cd academic && uv run --project .. alembic upgrade head)
+          for ini in */alembic.ini; do
+            (cd "$(dirname "$ini")" && uv run --project .. alembic upgrade head)
+          done
           (cd user && uv run --project .. python -m user_service.seed)
 
       # Guarda de deriva do schema: falha se algum modelo mudou sem migração
@@ -104,9 +115,9 @@ jobs:
       # ele o modelo e o schema divergem em silêncio até quebrar em produção.
       - name: Migrações cobrem os modelos?
         run: |
-          (cd user && uv run --project .. alembic check)
-          (cd auth && uv run --project .. alembic check)
-          (cd academic && uv run --project .. alembic check)
+          for ini in */alembic.ini; do
+            (cd "$(dirname "$ini")" && uv run --project .. alembic check)
+          done
 
       # Inclui test_contratos.py, que falha se algum serviço expuser rota fora
       # de contracts/.

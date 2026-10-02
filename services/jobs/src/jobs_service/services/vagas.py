@@ -245,9 +245,7 @@ async def listar(
     resultado = (await sessao.execute(consulta.limit(limite + 1))).all()
 
     tem_mais = len(resultado) > limite
-    linhas: list[LinhaDeVaga] = [
-        (linha[0], linha[1], linha[2]) for linha in resultado[:limite]
-    ]
+    linhas: list[LinhaDeVaga] = [(linha[0], linha[1], linha[2]) for linha in resultado[:limite]]
     proximo = None
     if tem_mais and linhas:
         ultima = linhas[-1][0]

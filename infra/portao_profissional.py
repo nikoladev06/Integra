@@ -57,6 +57,14 @@ MARCA = secrets.token_hex(3)
 cliente = httpx.Client(base_url=BASE, timeout=20.0)
 falhas: list[str] = []
 
+# O console do Windows abre em cp1252, que não tem a maioria dos acentos deste arquivo
+# nem os sinais de seta. Sem isto o roteiro sai com mojibake — e **derruba** no primeiro
+# caractere fora da tabela, com um UnicodeEncodeError que não diz nada sobre o portão.
+# `errors="replace"` fica como rede: um terminal exótico degrada a acentuação em vez de
+# perder a execução inteira.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 
 def conferir(condicao: bool, descricao: str) -> None:
     print(("  ok    " if condicao else "  FALHA ") + descricao)
@@ -228,8 +236,7 @@ def main() -> int:
         "/feed/posts", json={"conteudo": "antes da ativação"}, headers=empresa
     )
     conferir(
-        recusa_post.status_code == 403
-        and recusa_post.json().get("code") == "conta_pendente",
+        recusa_post.status_code == 403 and recusa_post.json().get("code") == "conta_pendente",
         "e também não publica no feed — a mesma checagem nos dois serviços",
     )
 
@@ -269,15 +276,12 @@ def main() -> int:
     )
     colega = entrar(email_colega)
 
-    email_bruno = cadastrar_aluno(
-        "Bruno", cpf_so_declarou, formacao=(universidade_id, curso["id"])
-    )
+    email_bruno = cadastrar_aluno("Bruno", cpf_so_declarou, formacao=(universidade_id, curso["id"]))
     bruno = entrar(email_bruno)
 
     perfil_bruno = cliente.get("/users/me", headers=bruno).json()
     conferir(
-        perfil_bruno["vinculo"] is None
-        and perfil_bruno["formacoes"][0]["verificadaEm"] is None,
+        perfil_bruno["vinculo"] is None and perfil_bruno["formacoes"][0]["verificadaEm"] is None,
         "o Bruno declarou a mesma formação e NÃO tem vínculo nem selo",
     )
 
@@ -348,8 +352,7 @@ def main() -> int:
     )
     so_pessoas = ids_do_feed(aluna, escopo="pessoas")
     conferir(
-        post_da_empresa["id"] not in so_pessoas
-        and post_do_colega["id"] in so_pessoas,
+        post_da_empresa["id"] not in so_pessoas and post_do_colega["id"] in so_pessoas,
         "escopo=pessoas deixa só o colega",
     )
 
@@ -392,8 +395,7 @@ def main() -> int:
     conferir(vaga["estado"] == "aberta", "a vaga nasce aberta")
     conferir(
         vaga["candidaturaEnviada"] is None,
-        "e `candidaturaEnviada` é NULA para a empresa — não `false`, que a faria "
-        "parecer elegível",
+        "e `candidaturaEnviada` é NULA para a empresa — não `false`, que a faria parecer elegível",
     )
 
     listagem = _exigir(cliente.get("/jobs/vagas", headers=aluna), 200, "listar vagas")
@@ -456,7 +458,8 @@ def main() -> int:
     )
     conferir(
         remarcada["visualizadaEm"] == marcada["visualizadaEm"],
-        "marcar de novo NÃO move a data — ela é a da primeira vez",
+        "marcar de novo NÃO move a data — ela é a da primeira vez "
+        f"({marcada['visualizadaEm']} → {remarcada['visualizadaEm']})",
     )
 
     volta = cliente.patch(
@@ -482,8 +485,7 @@ def main() -> int:
     do_aluno = cliente.get(f"/jobs/vagas/{vaga['id']}/candidaturas", headers=aluna)
     conferir(
         do_aluno.status_code == 404,
-        f"o aluno não lista as candidaturas da vaga — 404 esperado, veio "
-        f"{do_aluno.status_code}",
+        f"o aluno não lista as candidaturas da vaga — 404 esperado, veio {do_aluno.status_code}",
     )
     da_faculdade = cliente.get(f"/jobs/vagas/{vaga['id']}/candidaturas", headers=faculdade)
     conferir(
@@ -505,9 +507,7 @@ def main() -> int:
 
     print("\n11. vaga encerrada: sai da listagem, e quem já se candidatou não perde nada")
     _exigir(
-        cliente.patch(
-            f"/jobs/vagas/{vaga['id']}", json={"estado": "fechada"}, headers=empresa
-        ),
+        cliente.patch(f"/jobs/vagas/{vaga['id']}", json={"estado": "fechada"}, headers=empresa),
         200,
         "encerrar vaga",
     )
@@ -523,9 +523,7 @@ def main() -> int:
         "e continua legível por id — senão 'minhas candidaturas' apontaria para 404",
     )
 
-    ainda = _exigir(
-        cliente.get("/jobs/candidaturas/me", headers=aluna), 200, "minhas candidaturas"
-    )
+    ainda = _exigir(cliente.get("/jobs/candidaturas/me", headers=aluna), 200, "minhas candidaturas")
     conferir(
         len(ainda["itens"]) == 1,
         "encerrar não apagou candidatura nenhuma: é estado, não remoção",
@@ -533,10 +531,8 @@ def main() -> int:
 
     nova_tentativa = cliente.post(f"/jobs/vagas/{vaga['id']}/candidaturas", headers=colega)
     conferir(
-        nova_tentativa.status_code == 409
-        and nova_tentativa.json().get("code") == "vaga_fechada",
-        f"quem AINDA não se candidatou recebe 409 vaga_fechada — veio "
-        f"{nova_tentativa.status_code}",
+        nova_tentativa.status_code == 409 and nova_tentativa.json().get("code") == "vaga_fechada",
+        f"quem AINDA não se candidatou recebe 409 vaga_fechada — veio {nova_tentativa.status_code}",
     )
     de_quem_ja = cliente.post(f"/jobs/vagas/{vaga['id']}/candidaturas", headers=aluna)
     conferir(
@@ -578,8 +574,7 @@ def main() -> int:
         headers=aluna,
     )
     conferir(
-        tipo_errado.status_code == 422
-        and "contentType" in tipo_errado.json().get("fields", {}),
+        tipo_errado.status_code == 422 and "contentType" in tipo_errado.json().get("fields", {}),
         "e tipo fora das três imagens também — a validação é do módulo compartilhado",
     )
 

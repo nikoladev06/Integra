@@ -135,6 +135,4 @@ async def resumos_de_autores(ids: set[UUID]) -> dict[UUID, ResumoDeAutor]:
     Mesmo lote que o feed-service usa para os autores de post: a rota e o formato
     são do user-service, então a chamada mora em `integra_shared.interno`.
     """
-    return await interno.resumos_de_perfis(
-        settings.user_service_url, settings.servico_token, ids
-    )
+    return await interno.resumos_de_perfis(settings.user_service_url, settings.servico_token, ids)
