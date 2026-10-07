@@ -8,7 +8,10 @@
 #   http://localhost:8080/health/auth
 #   http://localhost:8080/health/user
 #   http://localhost:8080/health/academic
+#   http://localhost:8080/health/feed
+#   http://localhost:8080/health/jobs
 #   http://localhost:8081            painel do Traefik (só local)
+#   http://localhost:9001            console do MinIO (só local)
 
 name: integra
 
@@ -108,6 +111,12 @@ services:
       INTEGRA_JWT_SECRET: ${INTEGRA_JWT_SECRET}
       INTEGRA_SERVICO_TOKEN: ${INTEGRA_SERVICO_TOKEN}
       INTEGRA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Para `POST /users/me/avatar/upload-url`. O endpoint é o que o CLIENTE alcança:
+      # assinar é HMAC local, e este serviço nunca chama o storage.
+      INTEGRA_STORAGE_ENDPOINT: ${INTEGRA_STORAGE_ENDPOINT:-http://localhost:9000}
+      INTEGRA_STORAGE_BUCKET: ${INTEGRA_STORAGE_BUCKET:-integra}
+      INTEGRA_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-integra}
+      INTEGRA_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-integra-minio-dev}
     depends_on:
       postgres:
         condition: service_healthy
@@ -166,6 +175,138 @@ services:
       - traefik.http.routers.academic-health.service=academic
       - traefik.http.middlewares.academic-health-path.replacepath.path=/health
     networks: [borda, interna]
+
+  feed:
+    build:
+      context: ../services
+      args:
+        SERVICO: feed
+    restart: unless-stopped
+    environment:
+      INTEGRA_AMBIENTE: ${INTEGRA_AMBIENTE:-local}
+      INTEGRA_JWT_SECRET: ${INTEGRA_JWT_SECRET}
+      INTEGRA_SERVICO_TOKEN: ${INTEGRA_SERVICO_TOKEN}
+      INTEGRA_USER_SERVICE_URL: http://user:8000
+      INTEGRA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # O endpoint que o CLIENTE alcança, e não `http://minio:9000`. Assinar é
+      # computação local: o serviço nunca chama o storage, então o host que importa
+      # é o que o celular resolve. Com o nome interno aqui, a URL assinada só
+      # funcionaria de dentro do compose.
+      INTEGRA_STORAGE_ENDPOINT: ${INTEGRA_STORAGE_ENDPOINT:-http://localhost:9000}
+      INTEGRA_STORAGE_BUCKET: ${INTEGRA_STORAGE_BUCKET:-integra}
+      INTEGRA_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-integra}
+      INTEGRA_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-integra-minio-dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # `service_started`, como o academic: o feed SOBE sem o user-service. O que
+      # degrada é o feed (503 honesto); o detalhe de um post e a aba de publicações
+      # de um perfil continuam respondendo.
+      user:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.feed.loadbalancer.server.port=8000
+      # Um prefixo só: todo caminho do contrato começa em `/feed`, inclusive
+      # `/feed/usuarios/{id}/posts` — de propósito, para não competir com o
+      # `/users` do user-service no roteamento do gateway.
+      - traefik.http.routers.feed.rule=PathPrefix(`/feed`)
+      - traefik.http.routers.feed.entrypoints=web
+      - traefik.http.routers.feed-health.rule=Path(`/health/feed`)
+      - traefik.http.routers.feed-health.entrypoints=web
+      - traefik.http.routers.feed-health.middlewares=feed-health-path
+      - traefik.http.routers.feed-health.service=feed
+      - traefik.http.middlewares.feed-health-path.replacepath.path=/health
+    networks: [borda, interna]
+
+  jobs:
+    build:
+      context: ../services
+      args:
+        SERVICO: jobs
+    restart: unless-stopped
+    environment:
+      INTEGRA_AMBIENTE: ${INTEGRA_AMBIENTE:-local}
+      INTEGRA_JWT_SECRET: ${INTEGRA_JWT_SECRET}
+      INTEGRA_SERVICO_TOKEN: ${INTEGRA_SERVICO_TOKEN}
+      INTEGRA_USER_SERVICE_URL: http://user:8000
+      INTEGRA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Sem variáveis de storage: o jobs-service não emite URL de upload. Vaga é
+      # texto, e um campo de imagem aqui seria escopo que nenhuma tela pede.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      user:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.jobs.loadbalancer.server.port=8000
+      - traefik.http.routers.jobs.rule=PathPrefix(`/jobs`)
+      - traefik.http.routers.jobs.entrypoints=web
+      - traefik.http.routers.jobs-health.rule=Path(`/health/jobs`)
+      - traefik.http.routers.jobs-health.entrypoints=web
+      - traefik.http.routers.jobs-health.middlewares=jobs-health-path
+      - traefik.http.routers.jobs-health.service=jobs
+      - traefik.http.middlewares.jobs-health-path.replacepath.path=/health
+    networks: [borda, interna]
+
+  # Object Storage compatível com S3, para as URLs pré-assinadas de imagem. Trocar
+  # para o Object Storage da Oracle é endpoint e credencial em `.env` — nenhuma linha
+  # de código, porque a API é a mesma e o serviço só ASSINA.
+  minio:
+    # ponytail: `latest` é a única coisa honesta aqui, e é o único `latest` do
+    # arquivo — Postgres, Traefik e a imagem dos serviços estão pinados.
+    #
+    # O MinIO versiona por `RELEASE.<data>`, e **nenhuma tag dessas foi verificada**:
+    # o Docker Hub está inalcançável da máquina em que isto foi escrito (TLS
+    # handshake timeout até num `docker pull hello-world`). Pinar uma data que eu não
+    # consegui baixar seria pior que `latest`: daria aparência de reprodutibilidade a
+    # um palpite, e quem subisse a stack descobriria a tag errada no primeiro
+    # `compose up`.
+    #
+    # Upgrade: quem tiver rede para o Hub troca pelos dois `RELEASE.*` que de fato
+    # baixarem, aqui e na linha do `mc` abaixo.
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-integra}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-integra-minio-dev}
+    volumes:
+      - ./data/minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      # 9000 NÃO fica em loopback, ao contrário do Postgres: a URL pré-assinada é
+      # usada pelo celular, que não é a própria máquina. O console (9001) fica.
+      - "9000:9000"
+      - "127.0.0.1:9001:9001"
+    networks: [interna]
+
+  # Cria o bucket e o deixa legível sem assinatura. Roda uma vez e sai — `mc` não é
+  # daemon, e deixar o contêiner de pé só para ele ter status "up" esconderia a
+  # falha da criação do bucket atrás de um restart infinito.
+  minio-init:
+    # ponytail: idem — ver a nota da tag do `minio` acima.
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-integra}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-integra-minio-dev}
+      BUCKET: ${INTEGRA_STORAGE_BUCKET:-integra}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+      mc mb --ignore-existing local/$$BUCKET &&
+      mc anonymous set download local/$$BUCKET
+      "
+    restart: "no"
+    networks: [interna]
 
 networks:
   # Só quem precisa receber tráfego de fora fica na rede de borda. O Postgres não

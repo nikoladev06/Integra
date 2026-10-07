@@ -232,7 +232,7 @@ class _AvisoDeFixtures extends StatelessWidget {
             Text('Modo de demonstração', style: tema.textTheme.small),
             const SizedBox(height: Espaco.xs),
             Text(
-              'Sem backend conectado. Quatro contas de exemplo, senha '
+              'Sem backend conectado. Cinco contas de exemplo, senha '
               '${Fixtures.senhaDemo} em todas.',
               style: tema.textTheme.muted,
             ),
@@ -265,6 +265,15 @@ class _AvisoDeFixtures extends StatelessWidget {
               descricao:
                   'Empresa pendente de ativação: entra e edita o perfil, mas não '
                   'publica nem matricula.',
+            ),
+            // A quinta, da Sprint 5. As duas empresas existem porque a diferença
+            // entre elas é a regra: a pendente demonstra a recusa, e é a ativada que
+            // publica vaga e recebe candidatura.
+            const _Conta(
+              email: Fixtures.emailEmpresaAtiva,
+              descricao:
+                  'Empresa ativada: publica vaga pela aba Profissional › Vagas e '
+                  'vê quem se candidatou no detalhe de cada uma.',
             ),
           ],
         ),

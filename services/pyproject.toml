@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 dependencies = []
 
 [tool.uv.workspace]
-members = ["shared", "auth", "user", "academic"]
+members = ["shared", "auth", "user", "academic", "feed", "jobs"]
 
 [tool.uv.sources]
 integra-shared = { workspace = true }
@@ -33,8 +33,22 @@ extend-exclude = ["*/migrations/versions/*"]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["integra_shared", "auth_service", "user_service", "academic_service"]
+known-first-party = [
+    "integra_shared",
+    "auth_service",
+    "user_service",
+    "academic_service",
+    "feed_service",
+    "jobs_service",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["shared/tests", "auth/tests", "user/tests", "academic/tests"]
+testpaths = [
+    "shared/tests",
+    "auth/tests",
+    "user/tests",
+    "academic/tests",
+    "feed/tests",
+    "jobs/tests",
+]

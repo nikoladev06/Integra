@@ -11,6 +11,7 @@ import 'package:integra/features/auth/domain/auth_validators.dart';
 import 'package:integra/features/auth/presentation/sessao_controller.dart';
 import 'package:integra/features/institution/presentation/widgets/seletor_de_formacao.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
+import 'package:integra/shared/domain/seletor_de_imagem.dart';
 import 'package:integra/features/profile/presentation/widgets/formacoes_e_vinculo.dart';
 import 'package:integra/shared/domain/documentos.dart';
 
@@ -83,6 +84,65 @@ class _EditarPerfilScreenState extends ConsumerState<EditarPerfilScreen> {
       if (mounted) setState(() => _salvando = false);
     }
     return false;
+  }
+
+  /// Troca a foto de perfil, nos três passos do contrato.
+  ///
+  /// A ordem é a que importa e não é negociável: **pedir a URL, enviar o arquivo,
+  /// gravar a `fotoUrl`**. Gravar antes de enviar apontaria o perfil para um objeto que
+  /// talvez nunca chegue — e a foto quebraria para todo mundo que abrisse o perfil, não
+  /// só para quem tentou trocá-la.
+  ///
+  /// Se o envio falha, nada foi gravado e a foto antiga continua lá. É o estado certo
+  /// para uma falha de rede no meio de um upload de celular.
+  Future<void> _trocarFoto() async {
+    final ImagemEscolhida? escolhida;
+    try {
+      escolhida = await ref.read(seletorDeImagemProvider).escolher();
+    } on Object catch (_) {
+      // Permissão negada, galeria indisponível: a mensagem do canal de plataforma não
+      // é exibível, e a ação é a mesma em todos os casos.
+      setState(() => _erroGeral = 'Não foi possível abrir a galeria.');
+      return;
+    }
+    // Nulo é cancelamento, e cancelar não é erro.
+    if (escolhida == null) return;
+
+    setState(() {
+      _erroGeral = null;
+      _salvando = true;
+    });
+
+    final repo = ref.read(profileRepositoryProvider);
+    try {
+      final destino = await repo.urlDeUploadDeAvatar(
+        contentType: escolhida.contentType,
+        tamanhoBytes: escolhida.tamanhoBytes,
+      );
+      await repo.enviarAvatar(
+        destino,
+        escolhida.bytes,
+        contentType: escolhida.contentType,
+      );
+      // Só agora o perfil aponta para a imagem nova.
+      ref
+          .read(sessaoProvider.notifier)
+          .atualizarPerfil(await repo.atualizarMeuPerfil(fotoUrl: destino.urlFinal));
+
+      if (mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast(description: Text('Foto atualizada.')),
+        );
+      }
+    } on FalhaDeValidacao catch (falha) {
+      // 422 do serviço: tipo fora dos três aceitos, ou mais de 5 MB. A mensagem vem de
+      // lá com o campo nomeado, e é a mesma que o falso reproduz.
+      setState(() => _erroGeral = falha.campos.values.firstOrNull?.firstOrNull);
+    } on Failure catch (falha) {
+      setState(() => _erroGeral = falha.mensagem);
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
   }
 
   Future<void> _salvar() async {
@@ -193,6 +253,9 @@ class _EditarPerfilScreenState extends ConsumerState<EditarPerfilScreen> {
               ),
               const SizedBox(height: Espaco.md),
             ],
+
+            _Foto(perfil: perfil, aoTrocar: _trocarFoto),
+            const SizedBox(height: Espaco.lg),
 
             ShadForm(
               key: _formulario,
@@ -375,6 +438,88 @@ class _EditarPerfilScreenState extends ConsumerState<EditarPerfilScreen> {
 /// `GestureDetector` por fora com `HitTestBehavior.opaque`: um [ShadInput]
 /// desabilitado não recebe toque nenhum, então sem o detector o campo seria um
 /// pedaço morto de tela — e "não acontece nada" é indistinguível de defeito.
+/// A foto de perfil, com o botão de trocar.
+///
+/// Fora do [ShadForm] de propósito: trocar a foto **não é salvar o formulário**. Ela
+/// tem o próprio fluxo de três passos, grava sozinha, e confirma por toast sem fechar
+/// a tela — porque o usuário está no meio de outras edições, e fechar levaria embora o
+/// que ele digitou.
+///
+/// O `errorBuilder` não é zelo excessivo: a imagem vive num storage separado, e no modo
+/// de fixtures o arquivo não é enviado a lugar nenhum. As iniciais são o estado normal
+/// ali, e não um caso de erro.
+class _Foto extends StatelessWidget {
+  const _Foto({required this.perfil, required this.aoTrocar});
+
+  final Perfil perfil;
+  final Future<void> Function() aoTrocar;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = ShadTheme.of(context);
+    final cores = tema.colorScheme;
+    final temFoto = perfil.fotoUrl != null && perfil.fotoUrl!.isNotEmpty;
+
+    return Row(
+      children: [
+        ClipOval(
+          child: SizedBox(
+            width: 64,
+            height: 64,
+            child: temFoto
+                ? Image.network(
+                    perfil.fotoUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => _Iniciais(perfil: perfil),
+                  )
+                : _Iniciais(perfil: perfil),
+          ),
+        ),
+        const SizedBox(width: Espaco.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ShadButton.outline(
+                size: ShadButtonSize.sm,
+                onPressed: aoTrocar,
+                leading: const Icon(LucideIcons.camera, size: 14),
+                child: Text(temFoto ? 'Trocar foto' : 'Adicionar foto'),
+              ),
+              const SizedBox(height: Espaco.xs),
+              Text(
+                'JPEG, PNG ou WebP, até 5 MB. A foto é enviada direto ao '
+                'armazenamento — ela não passa pelo servidor do Integra.',
+                style: tema.textTheme.muted.copyWith(
+                  color: cores.mutedForeground,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Iniciais extends StatelessWidget {
+  const _Iniciais({required this.perfil});
+
+  final Perfil perfil;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = ShadTheme.of(context);
+
+    return ColoredBox(
+      color: tema.colorScheme.muted,
+      child: Center(
+        child: Text(perfil.iniciais, style: tema.textTheme.large),
+      ),
+    );
+  }
+}
+
 class _CampoTravado extends StatelessWidget {
   const _CampoTravado({
     required this.rotulo,

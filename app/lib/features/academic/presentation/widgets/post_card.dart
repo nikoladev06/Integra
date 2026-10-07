@@ -9,6 +9,7 @@ import 'package:integra/core/router/app_router.dart';
 import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/core/theme/tokens.dart';
 import 'package:integra/features/academic/data/models/post.dart';
+import 'package:integra/shared/domain/tempo.dart';
 
 /// O card de um comunicado.
 ///
@@ -214,8 +215,8 @@ class _Cabecalho extends StatelessWidget {
               ),
               Text(
                 post.editado
-                    ? '${_quando(post.criadoEm)} · editado'
-                    : _quando(post.criadoEm),
+                    ? '${quando(post.criadoEm)} · editado'
+                    : quando(post.criadoEm),
                 style: tema.textTheme.muted,
               ),
             ],
@@ -307,20 +308,4 @@ class _Acao extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Data relativa curta. `há 3 h` diz mais que `20/09 10:00` num feed.
-///
-/// Sem `intl` e sem pacote novo: são cinco faixas, e a alternativa seria carregar
-/// localização inteira para produzir as mesmas cinco frases em português.
-String _quando(DateTime quando) {
-  final diferenca = DateTime.now().toUtc().difference(quando.toUtc());
-
-  if (diferenca.inMinutes < 1) return 'agora';
-  if (diferenca.inMinutes < 60) return 'há ${diferenca.inMinutes} min';
-  if (diferenca.inHours < 24) return 'há ${diferenca.inHours} h';
-  if (diferenca.inDays < 7) return 'há ${diferenca.inDays} d';
-
-  final d = quando.toLocal();
-  return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 }

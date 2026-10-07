@@ -13,10 +13,10 @@ from fastapi import APIRouter, Query, Response
 
 from academic_service import apresentacao
 from academic_service.api.deps import SessaoDep, UsuarioDep
-from academic_service.paginacao import LIMITE_MAXIMO, LIMITE_PADRAO
 from academic_service.schemas import ComentarIn, ComentarioOut, PaginaDeComentarios
 from academic_service.services import comentarios, posts
 from integra_shared.errors import AppError
+from integra_shared.paginacao import LIMITE_MAXIMO, LIMITE_PADRAO
 
 router = APIRouter(prefix="/academic", tags=["comentários"])
 

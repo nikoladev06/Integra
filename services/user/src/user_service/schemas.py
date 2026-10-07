@@ -320,3 +320,61 @@ class ResumoDePerfilOut(_Saida):
     nome_completo: str
     username: str
     foto_url: str | None = None
+
+
+class AvatarUploadUrlIn(_Entrada):
+    """`POST /users/me/avatar/upload-url`.
+
+    O tamanho é declarado **antes** do envio porque ele entra na assinatura: o storage
+    recusa um `PUT` cujo `content-length` não seja exatamente este. Sem isso,
+    "tamanhoBytes" seria uma declaração de boa vontade, e nada impediria 500 MB numa URL
+    pedida para 2 KB.
+
+    As faixas não estão repetidas aqui: `integra_shared.armazenamento` valida o tipo e o
+    tamanho e levanta 422 nomeando o campo. Duas escritas do mesmo limite divergiriam, e
+    quem chama o módulo compartilhado de outro serviço não herdaria esta cópia.
+    """
+
+    content_type: str
+    tamanho_bytes: int
+
+
+class AvatarUploadUrlOut(_Saida):
+    """Onde enviar, o que gravar depois, e até quando a URL vale.
+
+    O cliente faz `PUT` do arquivo em `uploadUrl` e depois grava `fotoUrl` via
+    `PATCH /users/me`. **Bytes de imagem nunca atravessam este serviço** — receber o
+    multipart e repassar faria cada upload ocupar um worker do uvicorn pelo tempo da
+    conexão do celular, e o serviço de perfil ficaria indisponível por causa de fotos.
+    """
+
+    upload_url: str
+    foto_url: str
+    expira_em: datetime
+
+
+class EscopoDoFeedOut(_Saida):
+    """As duas listas que decidem o feed profissional. Rota interna, Sprint 5.
+
+    `universidades` é vínculo + seguidas + a administrada — o mesmo conjunto do
+    escopo `geral` do feed acadêmico, e o que torna um autor **recomendado**.
+    `seguidos` são as contas que o leitor segue, pessoas e empresas.
+
+    Ids crus, sem nome nem foto: o feed-service vai usá-los num `IN`, e resolve os
+    cabeçalhos depois — em lote, só para quem sobrar na página.
+    """
+
+    universidades: list[UUID]
+    seguidos: list[UUID]
+
+
+class AtivacaoOut(_Saida):
+    """Se a conta pode agir, e o tipo dela. Rota interna, Sprint 5.
+
+    Existe para os outros serviços **não** chamarem `GET /users/interno/{userId}`,
+    que devolve CPF e CNPJ. Um serviço de posts não tem o que fazer com CPF, e um
+    tipo de saída que o carrega é um vazamento esperando uma rota nova.
+    """
+
+    ativa: bool
+    tipo: TipoConta

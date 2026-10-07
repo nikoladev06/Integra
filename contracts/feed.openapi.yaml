@@ -1,0 +1,688 @@
+openapi: 3.1.0
+
+info:
+  title: Integra — feed-service
+  version: 1.0.0
+  description: |
+    Feed profissional: posts de alunos e de empresas, com curtidas e comentários.
+    Fecha o rascunho `feed.draft.yaml` (0.2.0-draft) na Sprint 5.
+
+    ## A diferença central em relação ao academic-service
+
+    **Aqui não há matriz de visibilidade.** Todo post profissional é legível por
+    qualquer conta autenticada; não existe alcance restrito, não existe vínculo a
+    consultar. O que o `escopo` e a `origem` decidem é o que aparece **por
+    padrão** no feed, e nunca o que é permitido — é por isso que "recomendado"
+    pode trazer quem o leitor não segue, o que no acadêmico seria vazamento.
+
+    A consequência prática vale registrar, porque é o oposto do outro pilar: um
+    `GET /feed/posts/{id}` nunca responde 404 por permissão. Só por inexistência.
+
+    ## O que o escopo faz — filtra por QUEM PUBLICA
+
+    O seletor do topo da tela, decidido na revisão de navegação da Sprint 4, tem
+    três opções, e elas filtram pelo **tipo da conta autora**:
+
+      geral     (padrão)  pessoas e empresas
+      empresas            só contas `empresa`
+      pessoas             só contas `aluno`
+
+    No acadêmico o escopo escolhe **instituições**, porque é o vínculo que
+    organiza aquele pilar. Aqui não há vínculo a consultar, e o que distingue um
+    post de outro é o tipo de conta que o escreveu.
+
+    ## O que entra no feed, e o que é "recomendado"
+
+    O feed de um leitor é a união de três conjuntos, e nada além deles:
+
+    1. **quem ele segue** (pessoas e empresas) → `origem: seguindo`
+    2. **os próprios posts** → `origem: seguindo`
+    3. **alunos com vínculo ativo numa universidade que o leitor tem vínculo ou
+       segue** → `origem: recomendado`
+
+    O terceiro é a resposta à pergunta que o rascunho deixou em aberto. O
+    conjunto de universidades é **o mesmo** do escopo `geral` do feed acadêmico —
+    vínculo + seguidas —, e sai da mesma rota interna do user-service. Uma
+    segunda definição de "as universidades do usuário" divergiria da primeira, e
+    o sintoma seria um feed que recomenda por um critério e outro que lista por
+    outro.
+
+    Três consequências que a tela precisa tratar, e que são deliberadas:
+
+    - **Conta `empresa` nunca é recomendada.** Empresa não tem vínculo, então só
+      alcança quem a segue. Com `escopo=empresas` e ninguém seguido, o feed
+      responde vazio — e o vazio é honesto: é o estado real, e não uma lista de
+      empresas quaisquer escolhida por nenhum critério.
+    - **Sem vínculo e sem seguir ninguém, o feed nasce vazio.** Mesma decisão do
+      feed acadêmico, e pelo mesmo motivo: preencher com "os últimos posts de
+      qualquer pessoa" exigiria um critério que ninguém escolheu.
+    - **A recomendação segue o vínculo que o autor tinha AO PUBLICAR**, e não o
+      atual. Quem troca de faculdade deixa os posts antigos na comunidade
+      anterior. É deliberado, e é a única forma que não exige perguntar ao
+      user-service "quais usuários têm vínculo nestas universidades?" a cada
+      página — uma lista sem teto, que entraria num `IN` e cresceria com a base.
+      O que fica gravado no post é um **id**, não um nome: ids não envelhecem
+      visivelmente, e é a mesma escolha que o academic-service faz com
+      `universidadeId`.
+
+    ## O que foi corrigido do protótipo, e continua valendo
+
+    1. **`isLiked` não é campo do post.** Era, no `ProfessionalPost` do
+       Firestore, e por isso a curtida de um usuário aparecia para todos. É
+       estado por leitor, resolvido na consulta (`curtidoPorMim`).
+    2. **Nada de denormalizar `nomeCompleto`/`username` dentro do post.** O autor
+       é resolvido na leitura, em lote, contra o user-service. A cópia envelhece
+       no instante em que a pessoa troca de nome.
+
+    ## Imagem no post
+
+    Mesmo fluxo de URL pré-assinada do avatar (`POST /users/me/avatar/upload-url`
+    no user-service): o cliente pede a URL, faz `PUT` do arquivo direto no
+    storage e manda a `imagemUrl` resultante ao publicar. **Bytes de imagem nunca
+    atravessam este serviço.**
+
+servers:
+  - url: https://api.integra.app
+    description: produção (Oracle Cloud, atrás do Traefik)
+  - url: http://localhost:8080
+    description: desenvolvimento local (gateway do docker compose)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: posts
+    description: |
+      Posts profissionais. Publica qualquer conta autenticada — aluno e empresa —,
+      e lê qualquer conta. Não há alcance restrito neste pilar.
+  - name: curtidas
+  - name: comentários
+    description: |
+      Mesmo formato do academic-service. A diferença é a moderação: lá a
+      faculdade autora do post remove comentário de terceiro; aqui **o autor do
+      post** tem o mesmo poder sobre o que está embaixo dele.
+  - name: arquivos
+
+paths:
+  # ─────────────────────────────  posts  ─────────────────────────────
+  /feed/posts:
+    get:
+      tags: [posts]
+      summary: Feed profissional do usuário autenticado
+      operationId: listFeedPosts
+      description: |
+        O parâmetro `escopo` é o seletor do topo da tela, e filtra por **tipo da
+        conta autora** — não por instituição, como no acadêmico:
+
+          geral     (padrão)  pessoas e empresas
+          empresas            só contas `empresa`
+          pessoas             só contas `aluno`
+
+        O escopo estreita; ele nunca amplia o conjunto descrito em `origem`.
+        Pedir `escopo=empresas` não traz empresa nenhuma que o leitor não siga,
+        porque empresa não entra por recomendação — ver a descrição do serviço.
+
+        Lista vazia é estado normal, e não erro: é o de quem ainda não seguiu
+        ninguém nem informou o CPF em nenhuma instituição.
+      parameters:
+        - name: escopo
+          in: query
+          schema: { type: string, enum: [geral, empresas, pessoas], default: geral }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: cursor
+          in: query
+          description: |
+            `proximoCursor` da página anterior. Opaco: codifica a data e o id do
+            último item, e não um deslocamento — com `OFFSET`, um post publicado
+            entre duas páginas repetiria um item na segunda.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página do feed, do mais recente para o mais antigo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaDePosts' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '503': { $ref: '#/components/responses/DependenciaIndisponivel' }
+
+    post:
+      tags: [posts]
+      summary: Publica um post profissional
+      operationId: createFeedPost
+      description: |
+        Qualquer conta autenticada publica — aluno e empresa. **Não há checagem
+        de tipo**, ao contrário do comunicado institucional, e não há alcance a
+        escolher: é o que faz este pilar mais simples que o acadêmico e não um
+        recorte dele.
+
+        Conta institucional **pendente** é recusada (`conta_pendente`), pela
+        mesma razão do academic-service: consultar o CNPJ público de uma empresa
+        não pode bastar para publicar no nome dela. A checagem consulta o banco
+        do user-service, não um claim do token — no JWT, uma conta desativada
+        seguiria publicando por até 15 minutos.
+
+        `imagemUrl`, quando presente, é a URL devolvida por
+        `POST /feed/posts/imagem/upload-url` depois do `PUT` do arquivo. O
+        serviço **não** confere que o arquivo chegou: uma imagem que o cliente
+        pediu e não enviou vira um card com imagem quebrada, e não um post
+        recusado — bloquear a publicação exigiria um `HEAD` no storage a cada
+        post, para salvar o cliente de um erro que ele mesmo causou.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PublicarPostRequest' }
+      responses:
+        '201':
+          description: Publicado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/ContaPendente' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /feed/posts/{postId}:
+    parameters:
+      - { name: postId, in: path, required: true, schema: { type: string, format: uuid } }
+
+    get:
+      tags: [posts]
+      summary: Detalhe de um post
+      operationId: getFeedPost
+      description: |
+        Legível por qualquer conta autenticada, e **não** limitado ao escopo nem
+        à origem: é assim que o perfil de outra pessoa abre um post dela.
+
+        404 aqui significa inexistente, e só isso. Não há o caso do
+        academic-service, em que 404 também cobre "existe mas você não alcança" —
+        porque aqui não existe post que alguém não alcance.
+      responses:
+        '200':
+          description: O post
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+    patch:
+      tags: [posts]
+      summary: Edita o próprio post
+      operationId: updateFeedPost
+      description: |
+        Só o autor. Corpo vazio responde 422 — um `PATCH` que não muda nada
+        marcaria `editadoEm` sem edição nenhuma, e a tela passaria a exibir
+        "editado" num post intacto.
+
+        `imagemUrl: null` **remove** a imagem; omitir o campo a mantém. É a única
+        ambiguidade de `PATCH` que este contrato resolve por valor explícito, e
+        não por regra derivada: aqui não há um segundo campo (como a
+        `visibilidade` do acadêmico) de onde deduzir a intenção.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EditarPostRequest' }
+      responses:
+        '200':
+          description: Post atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+    delete:
+      tags: [posts]
+      summary: Remove o próprio post
+      operationId: deleteFeedPost
+      description: |
+        Curtidas e comentários vão junto, por `ON DELETE CASCADE`. Sem remoção
+        lógica. A imagem no storage **não** é apagada: ela tem URL própria e
+        expiração própria, e apagá-la aqui acoplaria a remoção de um post à
+        disponibilidade do storage.
+      responses:
+        '204': { description: Removido }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  # ───────────────────────────  curtidas  ───────────────────────────
+  /feed/posts/{postId}/curtidas:
+    parameters:
+      - { name: postId, in: path, required: true, schema: { type: string, format: uuid } }
+
+    put:
+      tags: [curtidas]
+      summary: Curte o post
+      operationId: likeFeedPost
+      description: |
+        Idempotente, e a idempotência é do banco: a chave primária composta
+        (post, usuário) torna impossível criar duas linhas, nem por dois toques
+        rápidos no coração.
+      responses:
+        '204': { description: Curtido }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+    delete:
+      tags: [curtidas]
+      summary: Descurte o post
+      operationId: unlikeFeedPost
+      description: Idempotente por natureza — apagar o que não existe apaga zero linhas.
+      responses:
+        '204': { description: Descurtido }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  # ──────────────────────────  comentários  ──────────────────────────
+  /feed/posts/{postId}/comentarios:
+    parameters:
+      - { name: postId, in: path, required: true, schema: { type: string, format: uuid } }
+
+    get:
+      tags: [comentários]
+      summary: Comentários do post
+      operationId: listFeedComentarios
+      description: |
+        Do mais antigo para o mais novo — conversa se lê na ordem em que
+        aconteceu. A ordem inverte o keyset em relação ao feed, e é a única
+        diferença entre as duas paginações.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página de comentários
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaDeComentarios' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+    post:
+      tags: [comentários]
+      summary: Comenta no post
+      operationId: createFeedComentario
+      description: |
+        Qualquer conta autenticada comenta — inclusive a empresa autora,
+        respondendo no próprio post. Não há visibilidade a conferir antes, ao
+        contrário do acadêmico: aqui todo post é legível por todos.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ComentarRequest' }
+      responses:
+        '201':
+          description: Comentado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comentario' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /feed/comentarios/{comentarioId}:
+    parameters:
+      - { name: comentarioId, in: path, required: true, schema: { type: string, format: uuid } }
+
+    delete:
+      tags: [comentários]
+      summary: Remove um comentário
+      operationId: deleteFeedComentario
+      description: |
+        O autor do comentário, **ou o autor do post** — a segunda metade é
+        moderação. Sem ela, a única saída de quem publicou para tirar algo de
+        baixo do próprio post seria apagar o post inteiro.
+
+        É a mesma regra do academic-service com outro sujeito: lá quem modera é a
+        faculdade autora do comunicado, aqui é a pessoa (ou empresa) autora do
+        post.
+      responses:
+        '204': { description: Removido }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  # ────────────────────────  posts de um autor  ────────────────────────
+  /feed/usuarios/{userId}/posts:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+
+    get:
+      tags: [posts]
+      summary: Posts de um usuário (a aba "publicações" do perfil)
+      operationId: listPostsDoUsuario
+      description: |
+        A aba que a Sprint 4 deixou como vazio honesto no perfil da pessoa.
+        Existe separada do feed pelo mesmo motivo da rota equivalente do
+        acadêmico: o feed é limitado a quem o leitor segue e a quem lhe é
+        recomendado, e quem abriu um perfil pela busca não é nenhum dos dois.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página de posts do usuário
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaDePosts' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  # ────────────────────────────  arquivos  ────────────────────────────
+  /feed/posts/imagem/upload-url:
+    post:
+      tags: [arquivos]
+      summary: Emite URL pré-assinada para enviar a imagem de um post
+      operationId: createImagemUploadUrl
+      description: |
+        Mesmo fluxo de `POST /users/me/avatar/upload-url`: o cliente faz `PUT` do
+        arquivo em `uploadUrl` direto no storage e depois manda `imagemUrl` ao
+        publicar ou editar o post. Bytes de imagem nunca atravessam este serviço.
+
+        A URL emitida vale por poucos minutos e serve a **um** arquivo, num
+        caminho derivado do id de quem pediu — o cliente não escolhe o caminho, e
+        por isso não há como sobrescrever o arquivo de outra pessoa.
+
+        **Registrada antes de `/feed/posts/{postId}`** na implementação: os dois
+        caminhos competem, e a parametrizada capturaria "imagem" como id,
+        respondendo 422 ao validar o UUID sem nunca chegar aqui.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UploadUrlRequest' }
+      responses:
+        '201':
+          description: URL emitida
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UploadUrl' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '503': { $ref: '#/components/responses/DependenciaIndisponivel' }
+
+  /health:
+    get:
+      summary: Liveness e readiness
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: No ar, com o banco alcançável
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+        '503':
+          description: No ar, com dependência indisponível
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
+  schemas:
+    OrigemNoFeed:
+      type: string
+      enum: [seguindo, recomendado]
+      description: |
+        Por que este post está no feed. O cliente marca visualmente os
+        `recomendado`, senão o usuário não entende por que vê alguém que não
+        segue — e a reação costuma ser desconfiança, não descoberta.
+
+        `seguindo` cobre também **os próprios posts** do leitor: quem publicou
+        não precisa de explicação para se ver no próprio feed, e um rótulo
+        "recomendado" no que ele mesmo escreveu seria absurdo na tela.
+
+        Nulo fora do feed — ver a nota no campo `origem` de `Post`.
+
+    TipoDeAutor:
+      type: string
+      enum: [aluno, empresa]
+      description: |
+        O tipo da conta que publicou, e o que o `escopo` filtra. `faculdade` não
+        aparece: comunicado de instituição é o pilar acadêmico, e uma faculdade
+        publicando no feed profissional seria a mesma coisa escrita duas vezes em
+        dois lugares.
+
+    AutorDePost:
+      type: object
+      required: [id, nomeCompleto, username, tipo]
+      description: |
+        Resolvido **na leitura**, em lote, contra o user-service — não copiado
+        para dentro do post. O protótipo denormalizava, e o nome envelhecia ali:
+        trocar de nome não alcançava o que já estava publicado.
+      properties:
+        id: { type: string, format: uuid }
+        nomeCompleto: { type: string }
+        username: { type: string }
+        fotoUrl: { type: [string, 'null'] }
+        tipo: { $ref: '#/components/schemas/TipoDeAutor' }
+
+    AutorDeComentario:
+      type: object
+      required: [id, nomeCompleto, username]
+      description: |
+        Quem comentou. **Sem `tipo`**, ao contrário de `AutorDePost`: nenhum escopo
+        filtra comentário, então o tipo do autor não é coluna de `comentarios` — e um
+        campo que o serviço não tem como preencher corretamente é pior que um campo
+        ausente. É o mesmo formato do `AutorDeComentario` do academic-service.
+      properties:
+        id: { type: string, format: uuid }
+        nomeCompleto: { type: string }
+        username: { type: string }
+        fotoUrl: { type: [string, 'null'] }
+
+    Post:
+      type: object
+      required:
+        [id, autor, conteudo, totalDeCurtidas, totalDeComentarios,
+         curtidoPorMim, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        autor: { $ref: '#/components/schemas/AutorDePost' }
+        conteudo: { type: string, maxLength: 2000 }
+        imagemUrl:
+          type: [string, 'null']
+          format: uri
+          description: |
+            A URL final da imagem no storage, enviada pelo cliente depois do
+            `PUT`. Nula na grande maioria dos posts — o card é de texto por
+            padrão, e a imagem é o caso excepcional.
+        origem:
+          oneOf:
+            - { $ref: '#/components/schemas/OrigemNoFeed' }
+            - { type: 'null' }
+          description: |
+            Preenchido **somente nas respostas do feed**
+            (`GET /feed/posts`). Nulo no detalhe, na publicação e na aba de
+            publicações de um perfil — fora do feed ninguém fez a pergunta "por
+            que estou vendo isto?", e responder exigiria uma ida ao user-service
+            por post aberto só para descobrir se o leitor segue o autor.
+        totalDeCurtidas: { type: integer, minimum: 0 }
+        totalDeComentarios: { type: integer, minimum: 0 }
+        curtidoPorMim:
+          type: boolean
+          description: |
+            Estado **por leitor**, calculado na consulta. Não é campo do
+            registro: o `isLiked` do protótipo fazia a curtida de uma pessoa
+            aparecer para todas.
+        podeEditar:
+          type: boolean
+          description: |
+            Se o leitor é o autor. Evita a tela inferir permissão comparando ids
+            — e inferir errado num caso que o servidor recusaria.
+        criadoEm: { type: string, format: date-time }
+        editadoEm:
+          type: [string, 'null']
+          format: date-time
+          description: Não nulo depois de um `PATCH`. A tela mostra "editado".
+
+    Comentario:
+      type: object
+      required: [id, postId, autor, conteudo, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        postId: { type: string, format: uuid }
+        autor: { $ref: '#/components/schemas/AutorDeComentario' }
+        conteudo: { type: string, maxLength: 1000 }
+        podeRemover:
+          type: boolean
+          description: Se o leitor é o autor do comentário ou o autor do post.
+        criadoEm: { type: string, format: date-time }
+
+    PublicarPostRequest:
+      type: object
+      required: [conteudo]
+      properties:
+        conteudo: { type: string, minLength: 1, maxLength: 2000 }
+        imagemUrl: { type: [string, 'null'], format: uri }
+
+    EditarPostRequest:
+      type: object
+      description: |
+        Ao menos um campo. Corpo vazio responde 422.
+
+        `imagemUrl: null` remove a imagem; omitir o campo a mantém.
+      properties:
+        conteudo: { type: string, minLength: 1, maxLength: 2000 }
+        imagemUrl: { type: [string, 'null'], format: uri }
+
+    ComentarRequest:
+      type: object
+      required: [conteudo]
+      properties:
+        conteudo: { type: string, minLength: 1, maxLength: 1000 }
+
+    UploadUrlRequest:
+      type: object
+      required: [contentType, tamanhoBytes]
+      description: |
+        Mesmo corpo de `POST /users/me/avatar/upload-url`. O tamanho é declarado
+        **antes** do envio porque a URL pré-assinada fixa o limite: um arquivo
+        maior que o declarado é recusado pelo próprio storage, sem passar por
+        aqui.
+      properties:
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+        tamanhoBytes: { type: integer, minimum: 1, maximum: 5242880 }
+
+    UploadUrl:
+      type: object
+      required: [uploadUrl, imagemUrl, expiraEm]
+      properties:
+        uploadUrl:
+          type: string
+          format: uri
+          description: Destino do `PUT`, com assinatura de curta validade.
+        imagemUrl:
+          type: string
+          format: uri
+          description: A URL a gravar no post depois que o `PUT` tiver sucesso.
+        expiraEm: { type: string, format: date-time }
+
+    PaginaDePosts:
+      type: object
+      required: [itens]
+      properties:
+        itens:
+          type: array
+          items: { $ref: '#/components/schemas/Post' }
+        proximoCursor: { type: [string, 'null'] }
+
+    PaginaDeComentarios:
+      type: object
+      required: [itens]
+      properties:
+        itens:
+          type: array
+          items: { $ref: '#/components/schemas/Comentario' }
+        proximoCursor: { type: [string, 'null'] }
+
+    Health:
+      type: object
+      required: [status, service]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        service: { type: string, examples: ['feed-service'] }
+        version: { type: string }
+        dependencies:
+          type: object
+          additionalProperties: { type: string, enum: [ok, unreachable] }
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        fields:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+  responses:
+    NaoAutenticado:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: nao_autenticado, message: 'Sessão expirada. Faça login novamente.' }
+
+    NaoEncontrado:
+      description: |
+        Post ou comentário inexistente — **ou de outra pessoa**, nas rotas que
+        exigem ser o autor. Mesma resposta para os dois casos: um 403 confirmaria
+        que existe um registro com aquele id.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: nao_encontrado, message: 'Post não encontrado' }
+
+    ContaPendente:
+      description: |
+        Conta institucional ainda em análise. Entra e edita o perfil, mas não
+        publica — consultar o CNPJ público de uma empresa não pode bastar para
+        publicar no nome dela.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: conta_pendente
+            message: 'Sua conta ainda está em análise. Você será avisado quando for ativada.'
+
+    ValidationError:
+      description: Corpo fora do formato; `fields` traz a mensagem por campo
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: validation_error
+            message: Verifique os campos destacados
+            fields: { conteudo: ['Campo obrigatório'] }
+
+    DependenciaIndisponivel:
+      description: |
+        O user-service ou o storage não respondeu. Mensagem única para timeout,
+        conexão recusada e 5xx: para quem está na tela a ação é a mesma — tentar
+        de novo —, e distinguir os casos só serviria a quem mapeasse a topologia
+        interna.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: dependencia_indisponivel
+            message: 'Não foi possível carregar os dados agora. Tente novamente em instantes.'

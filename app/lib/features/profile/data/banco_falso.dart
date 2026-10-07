@@ -1,5 +1,7 @@
 import 'package:integra/core/error/failure.dart';
 import 'package:integra/features/academic/data/models/post.dart';
+import 'package:integra/features/jobs/data/models/vaga.dart';
+import 'package:integra/features/professional/data/models/post_profissional.dart';
 import 'package:integra/features/profile/data/fixtures.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
 
@@ -87,6 +89,116 @@ class ComentarioFalso {
 ///
 /// Existe porque sem ele os falsos mentem de um jeito que a API real não mente:
 /// o de autenticação cadastrava um usuário que o de perfil nunca via, e
+/// Um post do feed profissional no banco falso.
+///
+/// Guarda os mesmos campos da tabela `feed.posts` — inclusive
+/// [autorUniversidadeId], que e o vinculo do autor **no momento da publicacao**. Sem
+/// ele o falso nao reproduz o efeito que mais importa neste pilar: um post e
+/// `recomendado` para a comunidade da universidade em que foi escrito, e trocar de
+/// faculdade depois nao o move.
+class PostProfissionalFalso {
+  PostProfissionalFalso({
+    required this.id,
+    required this.autorId,
+    required this.autorTipo,
+    required this.criadoEm,
+    required this.conteudo,
+    this.autorUniversidadeId,
+    this.imagemUrl,
+    this.editadoEm,
+  });
+
+  final String id;
+  final String autorId;
+  final TipoDeAutor autorTipo;
+  final DateTime criadoEm;
+
+  /// Nulo em post de empresa e de aluno sem vinculo — e o nulo e o que os mantem
+  /// fora de `recomendado`: eles alcancam apenas quem segue o autor.
+  final String? autorUniversidadeId;
+
+  /// Mutaveis: o autor edita o texto e a imagem. Quem **nao** e mutavel diz o resto
+  /// — `autorTipo` e `autorUniversidadeId` sao finais, entao nenhuma edicao move o
+  /// post para outro escopo nem para a comunidade de outra universidade.
+  String conteudo;
+  String? imagemUrl;
+  DateTime? editadoEm;
+
+  /// Ids de quem curtiu. Um `Set`, e nao um contador, pelo mesmo motivo do
+  /// [PostFalso]: `curtidoPorMim` e estado por leitor.
+  final Set<String> curtidas = {};
+}
+
+class ComentarioProfissionalFalso {
+  ComentarioProfissionalFalso({
+    required this.id,
+    required this.postId,
+    required this.autorId,
+    required this.conteudo,
+    required this.criadoEm,
+  });
+
+  final String id;
+  final String postId;
+  final String autorId;
+  final String conteudo;
+  final DateTime criadoEm;
+}
+
+/// Uma vaga no banco falso.
+///
+/// `estado` e mutavel e nao ha remocao, como na tabela `jobs.vagas`: encerrar e
+/// mudar o estado, e as candidaturas recebidas continuam existindo.
+class VagaFalsa {
+  VagaFalsa({
+    required this.id,
+    required this.empresaId,
+    required this.criadoEm,
+    required this.titulo,
+    required this.descricao,
+    required this.tipo,
+    required this.modalidade,
+    this.local,
+    this.estado = EstadoDaVaga.aberta,
+    this.editadoEm,
+  });
+
+  final String id;
+  final String empresaId;
+  final DateTime criadoEm;
+
+  String titulo;
+  String descricao;
+  TipoDeVaga tipo;
+  Modalidade modalidade;
+
+  /// Nulo exatamente quando [modalidade] e `remoto` — a mesma invariante que o
+  /// `CheckConstraint` do banco garante nos dois sentidos.
+  String? local;
+
+  EstadoDaVaga estado;
+  DateTime? editadoEm;
+}
+
+class CandidaturaFalsa {
+  CandidaturaFalsa({
+    required this.id,
+    required this.vagaId,
+    required this.candidatoId,
+    required this.criadoEm,
+  });
+
+  final String id;
+  final String vagaId;
+  final String candidatoId;
+  final DateTime criadoEm;
+
+  /// Passa a `visualizada` quando a empresa marca, e **nao volta**. A data e a da
+  /// primeira vez: marcar de novo nao a move.
+  EstadoDaCandidatura estado = EstadoDaCandidatura.enviada;
+  DateTime? visualizadaEm;
+}
+
 /// `GET /users/me` devolvia a conta de exemplo independentemente de quem tinha
 /// entrado. Cadastrar e então logar mostrava o nome de outra pessoa — e o portão
 /// da sprint é exatamente "cadastro, login e edição de perfil ponta a ponta pelo
@@ -111,6 +223,12 @@ class BancoFalso {
       );
     }
     posts.addAll(Fixtures.posts(proximoId));
+    postsProfissionais.addAll(Fixtures.postsProfissionais(proximoId));
+    vagas.addAll(Fixtures.vagas(proximoId));
+    // Ana segue a empresa; a Carla não. É o que faz o post da empresa aparecer
+    // num feed e não no outro, que é a regra "empresa nunca é recomendada"
+    // visível ao trocar de conta na demo.
+    seguindoUsuarios[Fixtures.perfilDemo.id] = {Fixtures.perfilEmpresaAtiva.id};
   }
 
   final Map<String, Perfil> usuarios = {};
@@ -133,6 +251,18 @@ class BancoFalso {
 
   final List<PostFalso> posts = [];
   final List<ComentarioFalso> comentarios = [];
+
+  // ───────────────────────  pilar Profissional (Sprint 5)  ───────────────────────
+  //
+  // Mesmo objeto dos outros pilares, e isso nao e detalhe: o feed profissional
+  // recomenda por universidade do vinculo, e o vinculo e o que o "inserir CPF" da
+  // tela de instituicao cria. Com estados separados, recomendacao nunca funcionaria
+  // no falso — e a divergencia so apareceria contra o servidor.
+
+  final List<PostProfissionalFalso> postsProfissionais = [];
+  final List<ComentarioProfissionalFalso> comentariosProfissionais = [];
+  final List<VagaFalsa> vagas = [];
+  final List<CandidaturaFalsa> candidaturas = [];
 
   /// usuário → universidades que ele segue explicitamente. A do vínculo entra
   /// na listagem sem estar aqui, como no `user-service`.
@@ -214,4 +344,62 @@ class BancoFalso {
 
   int totalDeComentarios(String postId) =>
       comentarios.where((c) => c.postId == postId).length;
+
+  // ───────────────────────  pilar Profissional  ───────────────────────
+
+  PostProfissionalFalso? postProfissionalPorId(String postId) =>
+      postsProfissionais.where((p) => p.id == postId).firstOrNull;
+
+  int totalDeComentariosProfissionais(String postId) =>
+      comentariosProfissionais.where((c) => c.postId == postId).length;
+
+  /// O conjunto do feed profissional: quem o leitor segue, **mais ele mesmo**.
+  ///
+  /// O proprio leitor entra sempre. Sem isso, quem instala o app, publica e abre o
+  /// feed ve vazio — e o pior lugar para mostrar vazio e logo depois da primeira
+  /// acao do usuario. O `feed-service` tem a mesma clausula, pelo mesmo motivo.
+  Set<String> autoresSeguidos(String usuarioId) => {
+    usuarioId,
+    ...?seguindoUsuarios[usuarioId],
+  };
+
+  /// Se um post e **recomendado** a este leitor: o autor tinha vinculo, ao publicar,
+  /// numa universidade que o leitor tem vinculo ou segue.
+  ///
+  /// Empresa nunca e recomendada — `autorUniversidadeId` nulo nao pertence a
+  /// conjunto nenhum, que e a mesma garantia que o `NULL IN (...)` da no Postgres.
+  bool recomendadoPara(PostProfissionalFalso post, String leitorId) {
+    final universidade = post.autorUniversidadeId;
+    if (universidade == null) return false;
+    return universidadesDoEscopo(leitorId).contains(universidade);
+  }
+
+  /// A conta institucional esta ativada? Conta `aluno` nasce ativada.
+  ///
+  /// E o que o `feed-service` e o `jobs-service` perguntam ao `user-service` antes de
+  /// deixar alguem publicar. Aqui a resposta sai do mesmo mapa de usuarios, o que faz
+  /// o falso recusar a empresa em analise igual ao servidor — e e essa recusa que a
+  /// tela de publicar mostra como motivo.
+  bool contaAtiva(String contaId) => usuarios[contaId]?.ativadaEm != null;
+
+  // ─────────────────────────────  vagas  ─────────────────────────────
+
+  VagaFalsa? vagaPorId(String vagaId) =>
+      vagas.where((v) => v.id == vagaId).firstOrNull;
+
+  CandidaturaFalsa? candidaturaPorId(String id) =>
+      candidaturas.where((c) => c.id == id).firstOrNull;
+
+  /// A candidatura deste aluno nesta vaga, se existir.
+  ///
+  /// E o que torna o `POST` idempotente: no banco de verdade a garantia e
+  /// `UNIQUE (vaga, candidato)`, e aqui e esta consulta — as duas respondem a mesma
+  /// pergunta, e e por isso que o falso devolve 200 em vez de criar uma segunda.
+  CandidaturaFalsa? candidaturaDe(String vagaId, String candidatoId) =>
+      candidaturas
+          .where((c) => c.vagaId == vagaId && c.candidatoId == candidatoId)
+          .firstOrNull;
+
+  int totalDeCandidaturas(String vagaId) =>
+      candidaturas.where((c) => c.vagaId == vagaId).length;
 }

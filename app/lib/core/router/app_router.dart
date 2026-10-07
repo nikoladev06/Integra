@@ -10,6 +10,10 @@ import 'package:integra/features/auth/presentation/cadastro_screen.dart';
 import 'package:integra/features/auth/presentation/login_screen.dart';
 import 'package:integra/features/auth/presentation/sessao_controller.dart';
 import 'package:integra/features/institution/presentation/administracao_screen.dart';
+import 'package:integra/features/jobs/presentation/compor_vaga_screen.dart';
+import 'package:integra/features/jobs/presentation/vaga_screen.dart';
+import 'package:integra/features/professional/presentation/compor_post_profissional_screen.dart';
+import 'package:integra/features/professional/presentation/post_profissional_screen.dart';
 import 'package:integra/features/messages/presentation/mensagens_screen.dart';
 import 'package:integra/features/institution/presentation/perfil_de_universidade_screen.dart';
 import 'package:integra/features/professional/presentation/profissional_screen.dart';
@@ -36,6 +40,17 @@ abstract final class Rotas {
   static const comporPost = '/academico/compor';
   static const posts = '/academico/posts';
   static const profissional = '/profissional';
+
+  /// Compor um post do feed profissional. Fora do shell, como os formulários.
+  static const comporPostProfissional = '/profissional/compor';
+
+  /// Publicar uma vaga. Editar reusa a mesma tela, mas por `MaterialPageRoute` a
+  /// partir do detalhe — ela precisa da [Vaga] carregada, e passar um objeto por
+  /// caminho de URL exigiria serializá-lo ou recarregá-lo do zero.
+  static const comporVaga = '/profissional/vagas/nova';
+
+  static const postsProfissionais = '/profissional/posts';
+  static const vagas = '/profissional/vagas';
   static const perfil = '/perfil';
   static const editarPerfil = '/perfil/editar';
   static const trocarSenha = '/perfil/senha';
@@ -53,6 +68,10 @@ abstract final class Rotas {
   static const administracao = '/perfil/instituicao';
 
   static String post(String id) => '$posts/$id';
+
+  static String postProfissional(String id) => '$postsProfissionais/$id';
+
+  static String vaga(String id) => '$vagas/$id';
 
   static String universidade(String id) => '$universidades/$id';
 
@@ -174,6 +193,32 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, estado) => PerfilDeUniversidadeScreen(
           universidadeId: estado.pathParameters['id']!,
         ),
+      ),
+
+      // Pilar Profissional, Sprint 5. Fora do shell, pelo mesmo motivo das do
+      // Academico: sao destinos de ida e volta.
+      //
+      // A ORDEM IMPORTA, e mais aqui que no Academico: `/profissional/vagas/nova`
+      // tem que vir antes de `/profissional/vagas/:id`, senao a parametrizada
+      // captura "nova" como identificador e a tela de detalhe pede uma vaga que
+      // nao existe. E o mesmo cuidado que `/users/interno/resumos` exigiu no
+      // user-service, do outro lado do contrato.
+      GoRoute(
+        path: Rotas.comporPostProfissional,
+        builder: (_, _) => const ComporPostProfissionalScreen(),
+      ),
+      GoRoute(
+        path: Rotas.comporVaga,
+        builder: (_, _) => const ComporVagaScreen(),
+      ),
+      GoRoute(
+        path: '${Rotas.postsProfissionais}/:id',
+        builder: (_, estado) =>
+            PostProfissionalScreen(postId: estado.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '${Rotas.vagas}/:id',
+        builder: (_, estado) => VagaScreen(vagaId: estado.pathParameters['id']!),
       ),
 
       // Uma pilha de navegação por aba: entrar num perfil pelo feed e trocar de

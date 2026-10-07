@@ -1,5 +1,12 @@
 """Cursor de paginação: opaco para o cliente, keyset para o banco.
 
+Nasceu no academic-service e subiu para cá na Sprint 5, quando o feed e as vagas
+passaram a precisar do mesmo cursor. Três cópias do mesmo codificador divergem na
+primeira correção — e um cursor emitido por um serviço e lido por outro com meio
+byte de diferença é o tipo de erro que aparece como página repetida, não como
+exceção.
+
+
 `OFFSET` não serve num feed. Entre a primeira e a segunda página alguém publica,
 todo mundo anda uma posição, e o item que estava na borda aparece duas vezes —
 enquanto outro nunca aparece. O bug é intermitente e depende de quem publicou no

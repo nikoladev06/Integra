@@ -37,23 +37,27 @@ void main() {
       expect(find.byTooltip('Currículo'), findsOne);
 
       // A identificação fica acima das abas: ela responde "quem é esta conta", e
-      // vale para as duas.
-      expect(find.text(Fixtures.perfilDemo.nomeCompleto), findsOne);
-      expect(find.text('@${Fixtures.perfilDemo.username}'), findsOne);
+      // vale para as duas. `findsWidgets` e não `findsOne` desde a Sprint 5: a aba de
+      // publicações lista os posts da própria pessoa, e o cabeçalho de cada card
+      // repete o nome dela.
+      expect(find.text(Fixtures.perfilDemo.nomeCompleto), findsWidgets);
+      expect(find.text('@${Fixtures.perfilDemo.username}'), findsWidgets);
 
       // Publicações é a aba aberta — o currículo não está na tela ainda.
       expect(find.text('Formação'), findsNothing);
     });
 
-    testWidgets('publicações é um vazio honesto: o serviço é da Sprint 5', (
-      tester,
-    ) async {
+    testWidgets('publicações lista os posts da própria pessoa', (tester) async {
+      // Era um vazio honesto até a Sprint 4, quando o `feed-service` não existia.
+      // Agora usa `GET /feed/usuarios/{id}/posts` — e **não** o feed: o feed é
+      // limitado ao conjunto do leitor, e o próprio perfil não está nele.
       await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
       await abrirPerfil(tester);
 
-      // Uma grade de exemplos esconderia que o `feed-service` não existe.
-      expect(find.text('Você ainda não publicou nada'), findsOne);
-      expect(find.textContaining('entra na Sprint 5'), findsOne);
+      expect(find.textContaining('Terminei o projeto integrador'), findsOne);
+      // Só os dela: o post da Carla é da mesma universidade e aparece no feed dela,
+      // não nesta aba. É a diferença entre a rota do perfil e a do feed.
+      expect(find.textContaining('Alguém de Gestão'), findsNothing);
     });
 
     testWidgets('o currículo traz formação e vínculo, nessa ordem', (

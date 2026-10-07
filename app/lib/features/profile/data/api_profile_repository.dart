@@ -1,5 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:integra/core/network/api_client.dart';
 import 'package:integra/features/profile/data/models/instituicao.dart';
+import 'package:integra/features/professional/data/api_feed_repository.dart';
+import 'package:integra/features/professional/data/models/post_profissional.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
 import 'package:integra/features/profile/data/profile_repository.dart';
 import 'package:integra/shared/domain/documentos.dart';
@@ -26,6 +30,7 @@ class ApiProfileRepository implements ProfileRepository {
     String? username,
     String? telefone,
     String? bio,
+    String? fotoUrl,
   }) async {
     // Só os campos informados vão no corpo: o contrato manda `PATCH` deixar
     // inalterado o que foi omitido, e enviar `null` apagaria o valor.
@@ -34,6 +39,7 @@ class ApiProfileRepository implements ProfileRepository {
       if (username != null) 'username': username,
       if (telefone != null) 'telefone': telefone,
       if (bio != null) 'bio': bio,
+      if (fotoUrl != null) 'fotoUrl': fotoUrl,
     };
     return Perfil.fromJson(await _api.patch('/users/me', corpo: corpo));
   }
@@ -202,4 +208,33 @@ class ApiProfileRepository implements ProfileRepository {
   @override
   Future<void> removerMatricula(String matriculaId) =>
       _api.delete('/universidades/me/matriculas/$matriculaId');
+
+  // ──────────────────────────  foto de perfil  ──────────────────────────
+
+  @override
+  Future<UrlDeUpload> urlDeUploadDeAvatar({
+    required String contentType,
+    required int tamanhoBytes,
+  }) async {
+    final corpo = await _api.post(
+      '/users/me/avatar/upload-url',
+      corpo: {'contentType': contentType, 'tamanhoBytes': tamanhoBytes},
+    );
+    // `fotoUrl` aqui, `imagemUrl` na rota do feed: os dois contratos nomeiam o
+    // campo pelo que ele vai virar no destino. [UrlDeUpload] os unifica em
+    // `urlFinal`, porque para o `PUT` a diferença não existe — e dois tipos
+    // idênticos divergiriam no primeiro campo novo.
+    return UrlDeUpload(
+      uploadUrl: corpo['uploadUrl'] as String,
+      urlFinal: corpo['fotoUrl'] as String,
+      expiraEm: DateTime.parse(corpo['expiraEm'] as String),
+    );
+  }
+
+  @override
+  Future<void> enviarAvatar(
+    UrlDeUpload destino,
+    Uint8List bytes, {
+    required String contentType,
+  }) => enviarParaStorage(destino, bytes, contentType: contentType);
 }

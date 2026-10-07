@@ -34,6 +34,7 @@ class PublicarScreen extends ConsumerWidget {
     final perfil = ref.watch(perfilAtualProvider);
 
     final ehFaculdade = perfil?.tipo == TipoConta.faculdade;
+    final ehEmpresa = perfil?.tipo == TipoConta.empresa;
     final ativada = perfil?.ativadaEm != null;
 
     return Scaffold(
@@ -69,21 +70,34 @@ class PublicarScreen extends ConsumerWidget {
             icone: LucideIcons.messageSquare,
             cor: cores.profissional,
             titulo: 'Post no feed profissional',
-            descricao: 'Para conversar com outros alunos e com empresas.',
-            impedimento:
-                'O feed profissional entra na Sprint 5, junto do serviço que '
-                'guarda os posts.',
-            aoTocar: null,
+            descricao:
+                'Para conversar com outros alunos e com empresas. Sem alcance '
+                'restrito: qualquer pessoa no Integra pode abrir.',
+            // Aluno e empresa publicam; faculdade não. Comunicado de instituição é o
+            // pilar Acadêmico, e a mesma coisa em dois lugares seria lida duas vezes.
+            impedimento: ehFaculdade
+                ? 'Contas de instituição publicam comunicados no pilar '
+                      'Acadêmico, não no Profissional.'
+                : !ativada
+                ? 'Sua conta está em análise. Quando for ativada, você publica '
+                      'por aqui.'
+                : null,
+            aoTocar: () => context.push(Rotas.comporPostProfissional),
           ),
           _Opcao(
             icone: LucideIcons.briefcase,
             cor: cores.profissional,
             titulo: 'Vaga',
-            descricao: 'Publicada por empresa, com candidatura dos alunos.',
-            impedimento:
-                'A área de vagas entra na Sprint 5. Vaga e post têm ciclos de '
-                'vida diferentes, então são serviços separados.',
-            aoTocar: null,
+            descricao:
+                'Estágio, júnior ou trainee, com candidatura dos alunos e o '
+                'estado de cada uma.',
+            impedimento: !ehEmpresa
+                ? 'Só contas de empresa publicam vagas.'
+                : !ativada
+                ? 'Sua empresa está em análise. Quando for ativada, você '
+                      'publica vagas por aqui.'
+                : null,
+            aoTocar: () => context.push(Rotas.comporVaga),
           ),
         ],
       ),

@@ -155,19 +155,23 @@ void main() {
     testWidgets('o escopo do profissional persiste e o vazio o repete', (
       tester,
     ) async {
+      // A Ana segue a empresa de exemplo, e não segue a Carla — então `geral` traz
+      // as duas (uma por seguir, outra por recomendação da mesma universidade) e
+      // `Só empresas` traz apenas a primeira. O escopo deixou de ser uma escolha
+      // guardada e passou a ir na query string, como o provider já prometia.
       await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
       await tocar(tester, find.byTooltip('Profissional'));
+
+      expect(find.textContaining('abrimos duas vagas de'), findsOne);
+      expect(find.textContaining('Alguém de Gestão'), findsOne);
+
       await tocar(tester, find.byTooltip('Escopo do feed: Geral'));
       await tocar(tester, find.text('Só empresas'));
 
-      // O serviço só entra na Sprint 5, então não há o que filtrar ainda — mas o
-      // vazio repete a escolha. É a diferença entre um controle e uma decoração: o
-      // usuário vê que mexer no botão mudou algo.
       expect(find.byTooltip('Escopo do feed: Só empresas'), findsOne);
-      expect(
-        find.textContaining('Vagas e comunicados de quem contrata'),
-        findsOne,
-      );
+      // O post da aluna saiu: o escopo filtra por QUEM PUBLICA.
+      expect(find.textContaining('Alguém de Gestão'), findsNothing);
+      expect(find.textContaining('abrimos duas vagas de'), findsOne);
 
       // E sobrevive à troca de aba, porque mora num provider.
       await tocar(tester, find.byTooltip('Acadêmico'));

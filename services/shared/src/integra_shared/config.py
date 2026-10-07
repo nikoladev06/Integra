@@ -39,6 +39,40 @@ class Settings(BaseSettings):
         "modelo: o health reporta o banco como 'nao_configurado' em vez de falhar.",
     )
 
+    # ─────────────────  Object Storage (Sprint 5) — compatível com S3  ─────────────────
+    #
+    # Nulo por padrão, e o serviço sobe sem ele: só as rotas de upload respondem
+    # 503, e o resto da API funciona. É o que permite rodar local sem MinIO — e é o
+    # oposto do que um bucket de exemplo no default faria, que é emitir URLs que
+    # falham no `PUT` e fazer o cliente culpar o próprio arquivo.
+
+    storage_endpoint: str | None = Field(
+        default=None,
+        description="O endpoint que o CLIENTE alcança (http://localhost:9000 local, "
+        "o do Object Storage em produção) — não o nome na rede interna. Assinar é "
+        "computação local, então o serviço nunca precisa alcançar este host; quem "
+        "precisa é o celular, que não resolve `minio`.",
+    )
+    storage_bucket: str = "integra"
+    storage_access_key: str | None = None
+    storage_secret_key: str | None = None
+    storage_regiao: str = Field(
+        default="us-east-1",
+        description="Exigida pela assinatura SigV4 mesmo onde não significa nada. "
+        "O MinIO aceita qualquer valor, desde que o mesmo dos dois lados.",
+    )
+    upload_ttl_segundos: int = Field(
+        default=300,
+        gt=0,
+        description="Validade da URL de upload. Curta de propósito: ela autoriza "
+        "escrever num caminho do bucket, e o cliente a usa em segundos.",
+    )
+
+    @property
+    def storage_configurado(self) -> bool:
+        """Se há o suficiente para assinar. Endpoint sem chave não assina nada."""
+        return all((self.storage_endpoint, self.storage_access_key, self.storage_secret_key))
+
 
 @lru_cache
 def obter_settings() -> Settings:
