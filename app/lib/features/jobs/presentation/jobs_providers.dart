@@ -122,6 +122,33 @@ class VagasNotifier extends AsyncNotifier<VagasState> {
   }
 }
 
+/// As vagas de uma empresa — a aba de vagas do perfil dela. **Abertas e encerradas.**
+///
+/// Duas chamadas, e não uma, porque `GET /jobs/vagas` filtra por **um** estado: é
+/// decisão do contrato, e pelo motivo certo — na área de vagas uma lista misturada faz
+/// o aluno se candidatar a uma vaga fechada e levar 409. No perfil da empresa a
+/// pergunta é outra, "o que eu publiquei", e aí as duas entram; as abertas primeiro,
+/// porque são as que ainda recebem candidatura.
+///
+/// ponytail: só a primeira página de cada estado. Paginar quando uma empresa passar de
+/// 20 vagas em um deles — hoje a aba é um resumo do próprio perfil, não a área de busca.
+final vagasDaEmpresaProvider = FutureProvider.autoDispose
+    .family<List<Vaga>, String>((ref, empresaId) async {
+      final repo = ref.watch(jobsRepositoryProvider);
+
+      final paginas = await Future.wait([
+        repo.vagas(filtro: FiltroDeVagas(empresaId: empresaId)),
+        repo.vagas(
+          filtro: FiltroDeVagas(
+            empresaId: empresaId,
+            estado: EstadoDaVaga.fechada,
+          ),
+        ),
+      ]);
+
+      return [for (final pagina in paginas) ...pagina.itens];
+    });
+
 /// Uma vaga por id, para a tela de detalhe.
 final vagaProvider = FutureProvider.autoDispose.family<Vaga, String>(
   (ref, vagaId) => ref.watch(jobsRepositoryProvider).vaga(vagaId),

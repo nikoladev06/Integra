@@ -10,6 +10,7 @@ import 'package:integra/core/theme/tokens.dart';
 import 'package:integra/features/academic/data/models/post.dart';
 import 'package:integra/features/academic/presentation/widgets/botao_de_escopo.dart';
 import 'package:integra/features/auth/presentation/sessao_controller.dart';
+import 'package:integra/features/jobs/presentation/widgets/botao_de_filtro_de_vagas.dart';
 import 'package:integra/features/jobs/presentation/widgets/lista_de_candidaturas.dart';
 import 'package:integra/features/jobs/presentation/widgets/lista_de_vagas.dart';
 import 'package:integra/features/professional/presentation/profissional_providers.dart';
@@ -91,23 +92,29 @@ class ProfissionalScreen extends ConsumerWidget {
       body: CustomScrollView(
         slivers: [
           CabecalhoIntegra(
-            // O botão de escopo só faz sentido no feed: a lista de vagas não filtra
-            // por quem publica, ela filtra por tipo e modalidade, e isso tem um
-            // controle próprio na aba. Mostrar o mesmo ícone com significado diferente
-            // por aba é como um controle deixa de ser confiável.
-            escopo: abaEmVigor == AbaDoProfissional.feed
-                ? BotaoDeEscopo<EscopoDoProfissional>(
-                    opcoes: EscopoDoProfissional.values,
-                    selecionado: escopo,
-                    padrao: EscopoDoProfissional.geral,
-                    rotulo: (e) => e.rotulo,
-                    descricao: (e) => e.descricao,
-                    cor: cores.profissional,
-                    aoTrocar: (e) => ref
-                        .read(escopoDoProfissionalProvider.notifier)
-                        .trocar(e),
-                  )
-                : null,
+            // **Um controle por aba, no mesmo canto.** O slot da esquerda é o lugar do
+            // controle da lista nas duas telas de feed, e a aba de vagas passou a usá-lo
+            // também: o filtro dela morava numa faixa abaixo das abas, que custava até
+            // duas linhas permanentes da tela.
+            //
+            // Os dois ícones são **diferentes** de propósito — `slidersHorizontal` para
+            // escopo, `listFilter` para filtro. O mesmo ícone com significado diferente
+            // por aba é como um controle deixa de ser confiável. Candidaturas não tem
+            // controle: a lista é "as minhas", e não há o que estreitar.
+            escopo: switch (abaEmVigor) {
+              AbaDoProfissional.feed => BotaoDeEscopo<EscopoDoProfissional>(
+                opcoes: EscopoDoProfissional.values,
+                selecionado: escopo,
+                padrao: EscopoDoProfissional.geral,
+                rotulo: (e) => e.rotulo,
+                descricao: (e) => e.descricao,
+                cor: cores.profissional,
+                aoTrocar: (e) =>
+                    ref.read(escopoDoProfissionalProvider.notifier).trocar(e),
+              ),
+              AbaDoProfissional.vagas => const BotaoDeFiltroDeVagas(),
+              AbaDoProfissional.candidaturas => null,
+            },
             acoes: [
               if (podePublicar && abaEmVigor == AbaDoProfissional.feed)
                 Tooltip(

@@ -159,6 +159,20 @@ class ApiProfileRepository implements ProfileRepository {
     return seguir ? _api.put(caminho) : _api.delete(caminho);
   }
 
+  @override
+  Future<List<Perfil>> usuariosSeguidos() async {
+    final itens = await _api.getLista('/users/me/seguindo/usuarios');
+    return itens
+        .map((e) => Perfil.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<void> seguirUsuario(String userId, {required bool seguir}) {
+    final caminho = '/users/me/seguindo/usuarios/$userId';
+    return seguir ? _api.put(caminho) : _api.delete(caminho);
+  }
+
   // ───────────────  administração da própria instituição  ───────────────
 
   @override

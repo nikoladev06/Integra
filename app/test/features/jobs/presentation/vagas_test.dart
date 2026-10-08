@@ -29,6 +29,41 @@ void main() {
     await tocar(tester, find.byTooltip('Vagas'));
   }
 
+  /// Abre o menu de filtro, no canto esquerdo do cabeçalho.
+  ///
+  /// Os filtros saíram da faixa abaixo das abas e foram para lá, no mesmo lugar do
+  /// botão de escopo do feed: a faixa custava até duas linhas permanentes da tela
+  /// quando os quatro controles da empresa não caíam numa. Pelo ícone e não pelo
+  /// tooltip, que escreve o filtro em vigor e muda a cada escolha.
+  Future<void> abrirFiltro(WidgetTester tester) async {
+    await tocar(tester, find.byIcon(LucideIcons.listFilter));
+  }
+
+  /// Escolhe um valor num submenu do filtro. Dois toques: o ramo, e a opção.
+  Future<void> escolherFiltro(
+    WidgetTester tester,
+    String ramo,
+    String opcao,
+  ) async {
+    await abrirFiltro(tester);
+    await tocar(
+      tester,
+      find.descendant(
+        of: find.byType(SubmenuButton),
+        matching: find.text(ramo),
+      ),
+    );
+    // O rótulo da opção aparece também na etiqueta dos cards — "Júnior" é um tipo de
+    // vaga e um `ShadBadge` —, então o alvo tem que ser o item do menu.
+    await tocar(
+      tester,
+      find.descendant(
+        of: find.byType(MenuItemButton),
+        matching: find.text(opcao),
+      ),
+    );
+  }
+
   group('o portão da Sprint 5', () {
     testWidgets('empresa publica, aluno se candidata, empresa vê', (
       tester,
@@ -163,14 +198,20 @@ void main() {
     testWidgets('o filtro de encerradas é só da empresa', (tester) async {
       await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
       await abrirVagas(tester);
-      expect(find.widgetWithText(ShadButton, 'Encerradas'), findsNothing);
+      await abrirFiltro(tester);
+      expect(find.text('Encerradas'), findsNothing);
 
       await bombearAppAutenticado(tester, email: Fixtures.emailEmpresa);
       await abrirVagas(tester);
-      expect(find.widgetWithText(ShadButton, 'Encerradas'), findsOne);
+      await abrirFiltro(tester);
+      expect(find.text('Encerradas'), findsOne);
 
       // Ligar o filtro troca a lista: uma vaga encerrada aparece, as abertas somem.
-      await tocar(tester, find.widgetWithText(ShadButton, 'Encerradas'));
+      await tocar(tester, find.text('Encerradas'));
+      // `closeOnActivate: false`: os dois alternadores se combinam, e o menu fica
+      // aberto para a segunda metade da pergunta. Fechar é com o Escape.
+      await tocar(tester, find.byIcon(LucideIcons.listFilter));
+
       expect(find.text('Trainee em produto'), findsOne);
       expect(find.text('Estágio em desenvolvimento back-end'), findsNothing);
     });
@@ -186,19 +227,18 @@ void main() {
       expect(find.text('Estágio em desenvolvimento back-end'), findsOne);
       expect(find.text('Analista de dados júnior'), findsOne);
 
-      await tocar(tester, find.widgetWithText(ShadButton, 'Tipo'));
-      // "Júnior" aparece também na etiqueta do card, então o toque tem que ser no
-      // item do menu — `find.text` sozinho é ambíguo.
-      await tocar(
-        tester,
-        find.descendant(
-          of: find.byType(MenuItemButton),
-          matching: find.text('Júnior'),
-        ),
-      );
+      await escolherFiltro(tester, 'Tipo', 'Júnior');
 
       expect(find.text('Estágio em desenvolvimento back-end'), findsNothing);
       expect(find.text('Analista de dados júnior'), findsOne);
+
+      // E o ícone do cabeçalho conta que a lista está estreitada: é o que a faixa de
+      // etiquetas fazia por escrito, e sem isso uma lista filtrada se lê como uma
+      // lista vazia.
+      final icone = tester.widget<Icon>(find.byIcon(LucideIcons.listFilter));
+      expect(icone.color, isNot(ShadTheme.of(
+        tester.element(find.byIcon(LucideIcons.listFilter)),
+      ).colorScheme.mutedForeground));
     });
 
     testWidgets('com filtro ativo, o vazio é do filtro e não da área', (
@@ -208,14 +248,7 @@ void main() {
       await abrirVagas(tester);
 
       // Trainee só existe encerrado, e o filtro padrão lista abertas.
-      await tocar(tester, find.widgetWithText(ShadButton, 'Tipo'));
-      await tocar(
-        tester,
-        find.descendant(
-          of: find.byType(MenuItemButton),
-          matching: find.text('Trainee'),
-        ),
-      );
+      await escolherFiltro(tester, 'Tipo', 'Trainee');
 
       // Dizer "nenhuma vaga publicada" aqui seria mentir: há vagas, nenhuma casa.
       expect(find.text('Nenhuma vaga com esses filtros'), findsOne);

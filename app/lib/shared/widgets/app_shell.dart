@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'package:integra/core/router/app_router.dart';
 import 'package:integra/core/theme/tokens.dart';
+import 'package:integra/features/auth/presentation/sessao_controller.dart';
+import 'package:integra/features/profile/data/models/perfil.dart';
 
 /// A casca de navegação: as abas dos pilares, mais o botão de publicar.
 ///
@@ -21,26 +24,38 @@ import 'package:integra/core/theme/tokens.dart';
 /// publicar fosse o índice 2, Perfil passaria a ser o 3 e o índice do shell
 /// deixaria de casar com a posição na barra. Por isso a lista abaixo distingue os
 /// dois tipos, e o índice do ramo é declarado, não inferido da posição.
-class AppShell extends StatelessWidget {
+///
+/// ## A aba que some
+///
+/// **Empresa não tem Acadêmico.** Sem vínculo com instituição, não existe comunicado
+/// dirigido a ela, e a aba levaria a um feed que nunca é dela. O ramo continua no
+/// roteador — os índices do shell contam ramos, e renumerá-los por tipo de conta faria
+/// `currentIndex` deixar de casar com a posição na barra. O que muda é só o item: ele
+/// não é desenhado, e o `redirect` do roteador recusa `/academico` para esta conta,
+/// porque esconder o botão não fecha o caminho.
+class AppShell extends ConsumerWidget {
   const AppShell({required this.navegacao, super.key});
 
   final StatefulNavigationShell navegacao;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cores = ShadTheme.of(context).colorScheme;
+    final ehEmpresa =
+        ref.watch(perfilAtualProvider)?.tipo == TipoConta.empresa;
 
     return Scaffold(
       body: navegacao,
       bottomNavigationBar: _BarraInferior(
         children: [
-          _Item(
-            icone: LucideIcons.graduationCap,
-            rotulo: Pilar.academico.rotulo,
-            selecionado: navegacao.currentIndex == 0,
-            cor: cores.academico,
-            onTap: () => _irParaRamo(0),
-          ),
+          if (!ehEmpresa)
+            _Item(
+              icone: LucideIcons.graduationCap,
+              rotulo: Pilar.academico.rotulo,
+              selecionado: navegacao.currentIndex == 0,
+              cor: cores.academico,
+              onTap: () => _irParaRamo(0),
+            ),
           _Item(
             icone: LucideIcons.briefcase,
             rotulo: Pilar.profissional.rotulo,

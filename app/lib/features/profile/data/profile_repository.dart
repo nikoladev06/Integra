@@ -108,6 +108,21 @@ abstract interface class ProfileRepository {
     required bool seguir,
   });
 
+  /// `GET /users/me/seguindo/usuarios`. Pessoas e empresas — **não** universidades,
+  /// que têm lista própria porque a do vínculo entra nela sem registro.
+  ///
+  /// A tela do perfil público usa só os ids: a pergunta dela é "sigo esta conta?", e
+  /// não há campo `seguindo` em `PerfilPublico` — acrescentá-lo custaria uma consulta
+  /// ao grafo em toda busca e em todo card, para responder algo que uma lista por
+  /// sessão responde de uma vez.
+  Future<List<Perfil>> usuariosSeguidos();
+
+  /// `PUT`/`DELETE /users/me/seguindo/usuarios/{id}`.
+  ///
+  /// Seguir a si mesmo é 409 no serviço. A tela não oferece o botão no próprio
+  /// perfil, mas a recusa fica lá: duas cópias da regra é como uma delas some.
+  Future<void> seguirUsuario(String userId, {required bool seguir});
+
   // ───────────────  administração da própria instituição  ───────────────
   //
   // Só conta `faculdade`, e as de escrita exigem também que ela esteja

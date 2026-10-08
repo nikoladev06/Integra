@@ -11,19 +11,28 @@ import 'package:integra/features/profile/data/models/perfil.dart';
 
 /// O que a conta pode publicar. Aberta pelo botão central do rodapé.
 ///
-/// É um **hub**, e não um atalho direto para o formulário, porque publicar vai ter
-/// três destinos e hoje só um existe. O hub mostra os três, com os que faltam
-/// desabilitados e datados — a tela não muda de forma na Sprint 5, e quem usa
-/// aprende o que o produto tem sem ter que descobrir por tentativa.
+/// É um **hub**, e não um atalho direto para o formulário: publicar tem destinos
+/// diferentes por tipo de conta, e o mesmo botão do rodapé levando a formulários
+/// diferentes seria um botão que ninguém aprende.
 ///
-/// Custa um toque a mais para a faculdade, que só tem uma opção disponível. É o
-/// mesmo toque que ela vai dar quando houver três, e a alternativa — ir direto ao
-/// formulário hoje e passar a mostrar o hub depois — mudaria o comportamento do
-/// mesmo botão no meio do caminho.
+/// ## Esconder ou esmaecer, e a diferença entre as duas recusas
 ///
-/// **Cada opção declara o que a habilita, e a regra é a do servidor.** A faculdade
-/// pendente vê a opção e o motivo de não poder usá-la; esconder deixaria a conta em
-/// análise sem entender o que falta, e mostrar habilitado renderia 403 no envio.
+/// A tela mostrava as três opções para todas as contas, com um motivo escrito nas
+/// indisponíveis. Isso tratava duas recusas muito diferentes como se fossem uma:
+///
+/// - **"não é para este tipo de conta"** é permanente. Um aluno nunca vai publicar
+///   comunicado institucional, e uma faculdade nunca vai abrir vaga. A opção
+///   esmaecida não informava nada que a conta possa usar — ocupava um terço da tela
+///   para dizer "isto não é seu". Agora ela **não aparece**.
+/// - **"ainda não"** é temporário, e continua esmaecida com o motivo. A conta
+///   institucional pendente vê a opção e lê que está em análise; esconder deixaria
+///   ela sem entender o que falta, e habilitar renderia 403 no envio.
+///
+/// O post profissional é a exceção que fica à vista para todas: a faculdade o vê
+/// esmaecido porque o que ela publica é comunicado, no pilar Acadêmico — e esse
+/// motivo é sobre **onde** a coisa mora, não sobre a conta não servir.
+///
+/// A ativação é checada na mesma ordem do servidor: tipo primeiro, estado depois.
 class PublicarScreen extends ConsumerWidget {
   const PublicarScreen({super.key});
 
@@ -49,23 +58,22 @@ class PublicarScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(Espaco.md),
         children: [
-          _Opcao(
-            icone: LucideIcons.megaphone,
-            cor: cores.academico,
-            titulo: 'Comunicado da instituição',
-            descricao:
-                'Público, interno à instituição ou restrito a um curso. Só quem '
-                'tem vínculo recebe os dois últimos.',
-            // As duas condições são as mesmas que o serviço checa, e na mesma
-            // ordem: tipo de conta pelo token, ativação pelo banco.
-            impedimento: !ehFaculdade
-                ? 'Só contas de faculdade publicam comunicados institucionais.'
-                : !ativada
-                ? 'Sua instituição está em análise. Quando for ativada, você '
-                      'publica por aqui.'
-                : null,
-            aoTocar: () => context.push(Rotas.comporPost),
-          ),
+          // Só a faculdade. O aluno e a empresa não têm instituição para comunicar
+          // nada em nome de, e a opção esmaecida só lhes dizia "isto não é seu".
+          if (ehFaculdade)
+            _Opcao(
+              icone: LucideIcons.megaphone,
+              cor: cores.academico,
+              titulo: 'Comunicado da instituição',
+              descricao:
+                  'Público, interno à instituição ou restrito a um curso. Só '
+                  'quem tem vínculo recebe os dois últimos.',
+              impedimento: ativada
+                  ? null
+                  : 'Sua instituição está em análise. Quando for ativada, você '
+                        'publica por aqui.',
+              aoTocar: () => context.push(Rotas.comporPost),
+            ),
           _Opcao(
             icone: LucideIcons.messageSquare,
             cor: cores.profissional,
@@ -84,21 +92,22 @@ class PublicarScreen extends ConsumerWidget {
                 : null,
             aoTocar: () => context.push(Rotas.comporPostProfissional),
           ),
-          _Opcao(
-            icone: LucideIcons.briefcase,
-            cor: cores.profissional,
-            titulo: 'Vaga',
-            descricao:
-                'Estágio, júnior ou trainee, com candidatura dos alunos e o '
-                'estado de cada uma.',
-            impedimento: !ehEmpresa
-                ? 'Só contas de empresa publicam vagas.'
-                : !ativada
-                ? 'Sua empresa está em análise. Quando for ativada, você '
-                      'publica vagas por aqui.'
-                : null,
-            aoTocar: () => context.push(Rotas.comporVaga),
-          ),
+          // Só a empresa. Quem se candidata é aluno, e faculdade não contrata pelo
+          // Integra — nenhum dos dois tem o que fazer com um formulário de vaga.
+          if (ehEmpresa)
+            _Opcao(
+              icone: LucideIcons.briefcase,
+              cor: cores.profissional,
+              titulo: 'Vaga',
+              descricao:
+                  'Estágio, júnior ou trainee, com candidatura dos alunos e o '
+                  'estado de cada uma.',
+              impedimento: ativada
+                  ? null
+                  : 'Sua empresa está em análise. Quando for ativada, você '
+                        'publica vagas por aqui.',
+              aoTocar: () => context.push(Rotas.comporVaga),
+            ),
         ],
       ),
     );
@@ -123,8 +132,10 @@ class _Opcao extends StatelessWidget {
   /// Por que esta opção não está disponível. Nulo significa disponível.
   ///
   /// Uma frase em vez de um booleano: "indisponível" sem motivo manda o usuário
-  /// adivinhar, e os motivos aqui são três coisas diferentes — tipo de conta
-  /// errado, conta em análise, e serviço que não existe.
+  /// adivinhar, e os dois motivos que sobraram dizem coisas diferentes — **conta em
+  /// análise**, que passa, e **pilar errado**, que explica onde a coisa mora. O
+  /// terceiro, "não é para este tipo de conta", deixou de ser um impedimento: a
+  /// opção não aparece.
   final String? impedimento;
 
   final VoidCallback? aoTocar;
@@ -140,8 +151,9 @@ class _Opcao extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: Espaco.md),
       child: Opacity(
-        // Esmaecido, e não escondido: a opção indisponível informa o que o produto
-        // vai ter, e o texto abaixo diz quando.
+        // Esmaecido, e não escondido: o que chega aqui indisponível é "ainda não" ou
+        // "noutro pilar", e as duas são informação útil. O "não é para você" não
+        // chega — a opção nem é construída.
         opacity: _disponivel ? 1 : 0.6,
         child: ShadCard(
           padding: const EdgeInsets.all(Espaco.md),

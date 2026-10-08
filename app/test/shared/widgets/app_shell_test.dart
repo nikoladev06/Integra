@@ -111,7 +111,7 @@ void main() {
       // Empilha por cima da casca. Se fosse um ramo, `currentIndex` passaria a
       // contar quatro e o Perfil deixaria de casar com a posição na barra.
       expect(find.text('Publicar'), findsWidgets);
-      expect(find.text('Comunicado da instituição'), findsOne);
+      expect(find.text('Post no feed profissional'), findsOne);
     });
   });
 
@@ -125,32 +125,49 @@ void main() {
       expect(find.text('Novo comunicado'), findsOne);
     });
 
-    testWidgets('o aluno vê a opção e o motivo de não poder', (tester) async {
+    testWidgets('o aluno vê só o post profissional', (tester) async {
       await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
       await tocar(tester, find.byTooltip('Publicar'));
 
-      // Esmaecida e explicada, não escondida: a opção informa o que o produto tem,
-      // e o texto diz por que não é para esta conta.
-      expect(find.text('Comunicado da instituição'), findsOne);
-      expect(find.textContaining('Só contas de faculdade publicam'), findsOne);
-
-      await tocar(tester, find.text('Comunicado da instituição'));
-      expect(
-        find.text('Novo comunicado'),
-        findsNothing,
-        reason: 'tocar numa opção indisponível não abre o formulário',
-      );
+      // **O que saiu:** as duas opções esmaecidas, com "só contas de faculdade" e
+      // "só contas de empresa" escritos embaixo. Elas ocupavam dois terços da tela
+      // para dizer "isto não é seu" — uma recusa permanente, que o usuário não pode
+      // fazer nada a respeito. A que fica é a única que ele usa.
+      expect(find.text('Post no feed profissional'), findsOne);
+      expect(find.text('Comunicado da instituição'), findsNothing);
+      expect(find.text('Vaga'), findsNothing);
+      expect(find.textContaining('Só contas de'), findsNothing);
     });
 
-    testWidgets('a empresa lê que comunicado institucional não é dela', (
+    testWidgets('a empresa vê post e vaga, e nenhum comunicado', (
       tester,
     ) async {
-      await bombearAppAutenticado(tester, email: Fixtures.emailEmpresa);
+      await bombearAppAutenticado(tester, email: Fixtures.emailEmpresaAtiva);
       await tocar(tester, find.byTooltip('Publicar'));
 
-      // Empresa é conta institucional, mas comunicado acadêmico é de `faculdade`:
-      // a checagem de **tipo** vem antes da de ativação, na mesma ordem do serviço.
-      expect(find.textContaining('Só contas de faculdade publicam'), findsOne);
+      expect(find.text('Post no feed profissional'), findsOne);
+      expect(find.text('Vaga'), findsOne);
+      // Empresa é conta institucional, mas não administra instituição nenhuma.
+      expect(find.text('Comunicado da instituição'), findsNothing);
+    });
+
+    testWidgets('a faculdade vê comunicado, e o post no pilar errado', (
+      tester,
+    ) async {
+      await bombearAppAutenticado(tester, email: Fixtures.emailFaculdade);
+      await tocar(tester, find.byTooltip('Publicar'));
+
+      expect(find.text('Comunicado da instituição'), findsOne);
+      expect(find.text('Vaga'), findsNothing);
+
+      // O post profissional continua à vista, esmaecido: este impedimento diz
+      // **onde** a coisa mora, e não que a conta não serve — é informação útil, ao
+      // contrário de "só contas de empresa publicam vagas".
+      expect(find.text('Post no feed profissional'), findsOne);
+      expect(
+        find.textContaining('publicam comunicados no pilar'),
+        findsOne,
+      );
     });
 
     testWidgets('a faculdade pendente lê que está em análise', (tester) async {
@@ -178,28 +195,29 @@ void main() {
       );
     });
 
-    testWidgets('as três opções aparecem, cada uma com o seu impedimento', (
+    testWidgets('o hub não oferece nada que o serviço recusaria por tipo', (
       tester,
     ) async {
-      // A aposta da Sprint 4 era que a tela não mudaria de forma quando os serviços
-      // entrassem, e não mudou: as três opções continuam nas mesmas posições. O que
-      // mudou é **de onde vem o impedimento** — era "entra na Sprint 5" para duas
-      // delas, e agora é o tipo de conta e a ativação, que são as regras do servidor.
-      await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
-      await tocar(tester, find.byTooltip('Publicar'));
+      // O hub passou a ser a lista do que a conta **pode** publicar, e não o catálogo
+      // do produto com dois terços riscados. O que sobra esmaecido é só "ainda não" e
+      // "noutro pilar" — nunca "este tipo de conta não".
+      for (final conta in [
+        Fixtures.emailDemo,
+        Fixtures.emailFaculdade,
+        Fixtures.emailEmpresaAtiva,
+      ]) {
+        await bombearAppAutenticado(tester, email: conta);
+        await tocar(tester, find.byTooltip('Publicar'));
 
-      expect(find.text('Comunicado da instituição'), findsOne);
-      expect(find.text('Post no feed profissional'), findsOne);
-      expect(find.text('Vaga'), findsOne);
+        expect(find.textContaining('Só contas de'), findsNothing, reason: conta);
+        expect(find.textContaining('entra na Sprint 5'), findsNothing, reason: conta);
+        // E sempre há ao menos uma coisa a publicar: um hub vazio seria um botão no
+        // rodapé que não leva a nada.
+        expect(find.byType(ShadCard), findsWidgets, reason: conta);
 
-      // A Ana é aluna: publica post, e não publica comunicado nem vaga. Cada recusa
-      // diz o **seu** motivo — "indisponível" sem motivo manda o usuário adivinhar.
-      expect(
-        find.textContaining('Só contas de faculdade publicam'),
-        findsOne,
-      );
-      expect(find.textContaining('Só contas de empresa publicam'), findsOne);
-      expect(find.textContaining('entra na Sprint 5'), findsNothing);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+      }
     });
   });
 }

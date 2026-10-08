@@ -438,6 +438,44 @@ class FakeProfileRepository implements ProfileRepository {
     }
   }
 
+  @override
+  Future<List<Perfil>> usuariosSeguidos() async {
+    await _esperar();
+
+    final ids =
+        _banco.seguindoUsuarios[_banco.usuarioAtual.id] ?? const <String>{};
+
+    return [
+      for (final id in ids)
+        if (_banco.usuarios[id] case final encontrado?) _publico(encontrado),
+    ]..sort((a, b) => a.nomeCompleto.compareTo(b.nomeCompleto));
+  }
+
+  @override
+  Future<void> seguirUsuario(String userId, {required bool seguir}) async {
+    await _esperar();
+
+    if (!_banco.usuarios.containsKey(userId)) {
+      throw const FalhaNaoEncontrado('Usuário não encontrado');
+    }
+    if (userId == _banco.usuarioAtual.id) {
+      // O 409 do serviço. A tela não oferece o botão no próprio perfil, e por isso
+      // esta recusa nunca deveria aparecer — mas o falso que a omitisse deixaria a
+      // tela ser escrita sem saber que ela existe.
+      throw const FalhaDeConflito('Você não pode seguir a si mesmo');
+    }
+
+    final conjunto = _banco.seguindoUsuarios.putIfAbsent(
+      _banco.usuarioAtual.id,
+      () => <String>{},
+    );
+    if (seguir) {
+      conjunto.add(userId);
+    } else {
+      conjunto.remove(userId);
+    }
+  }
+
   // ───────────────  administração da própria instituição  ───────────────
 
   /// A universidade da conta autenticada, exigindo `faculdade` **ativada**.
