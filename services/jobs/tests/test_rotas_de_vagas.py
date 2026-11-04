@@ -22,7 +22,7 @@ from integra_shared.security import UsuarioAutenticado, criar_access_token
 from jobs_service.api.deps import obter_sessao
 from jobs_service.main import app
 from jobs_service.settings import settings
-from user_service.schemas import AtivacaoOut, ResumoDePerfilOut
+from user_service.schemas import AtivacaoOut, EscopoDoFeedOut, ResumoDePerfilOut
 
 EMPRESA = uuid4()
 OUTRA_EMPRESA = uuid4()
@@ -104,10 +104,30 @@ def _perfis(*ids: UUID) -> list[dict]:
     ]
 
 
-def _user_service(*, tipos: dict[UUID, str] | None = None, ativas: bool = True) -> respx.Router:
-    """As duas rotas internas que o jobs-service consome."""
+def _user_service(
+    *,
+    tipos: dict[UUID, str] | None = None,
+    ativas: bool = True,
+    seguidos: dict[UUID, list[UUID]] | None = None,
+) -> respx.Router:
+    """As três rotas internas que o jobs-service consome.
+
+    `seguidos` é por leitor: a área de vagas lista só as empresas que ele segue, e
+    cai nas recomendadas — todas — quando nenhuma delas tem vaga. Ausente, ninguém
+    segue ninguém, que é o estado da maioria dos testes daqui.
+    """
     tipos = tipos or {}
+    seguidos = seguidos or {}
     roteador = respx.mock(base_url=USER, assert_all_called=False)
+    roteador.get(url__regex=r"/users/interno/(?P<conta>[0-9a-f-]+)/escopo-do-feed$").mock(
+        side_effect=lambda pedido, conta: httpx.Response(
+            200,
+            json=EscopoDoFeedOut(
+                universidades=[],
+                seguidos=seguidos.get(UUID(conta), []),
+            ).model_dump(mode="json", by_alias=True),
+        )
+    )
     roteador.get(url__regex=r"/users/interno/(?P<conta>[0-9a-f-]+)/ativacao$").mock(
         side_effect=lambda pedido, conta: httpx.Response(
             200,
@@ -302,14 +322,117 @@ def test_fechada_sai_da_listagem_mas_continua_legivel_por_id(cliente):
             headers=_token(EMPRESA, tipo="empresa"),
         )
         abertas = cliente.get("/jobs/vagas", headers=_token(ALUNO)).json()
-        fechadas = cliente.get(
-            "/jobs/vagas", params={"estado": "fechada"}, headers=_token(ALUNO)
-        ).json()
         detalhe = cliente.get(f"/jobs/vagas/{vaga['id']}", headers=_token(ALUNO))
 
     assert abertas["itens"] == []
-    assert [v["id"] for v in fechadas["itens"]] == [vaga["id"]]
     assert detalhe.status_code == 200
+
+
+def test_a_lista_de_fechadas_e_da_empresa_autora(cliente):
+    """O histórico é de quem publicou. Para o aluno, encerrada é só um beco."""
+    vaga = _publicar(cliente)
+    with _user_service():
+        cliente.patch(
+            f"/jobs/vagas/{vaga['id']}",
+            json={"estado": "fechada"},
+            headers=_token(EMPRESA, tipo="empresa"),
+        )
+        params = {"estado": "fechada"}
+        do_aluno = cliente.get("/jobs/vagas", params=params, headers=_token(ALUNO))
+        de_outra = cliente.get(
+            "/jobs/vagas",
+            params={**params, "empresaId": str(EMPRESA)},
+            headers=_token(OUTRA_EMPRESA, tipo="empresa"),
+        )
+        da_autora = cliente.get(
+            "/jobs/vagas",
+            params={**params, "empresaId": str(EMPRESA)},
+            headers=_token(EMPRESA, tipo="empresa"),
+        )
+
+    # 403 e não 404: o recusado é a lista de outra conta, e a recusa não revela
+    # vaga nenhuma. Sem `empresaId` o aluno também leva 403 — não há "as minhas".
+    assert do_aluno.status_code == 403
+    assert do_aluno.json()["code"] == "somente_a_autora"
+    assert de_outra.status_code == 403
+    assert [v["id"] for v in da_autora.json()["itens"]] == [vaga["id"]]
+
+
+def test_a_area_de_vagas_lista_so_quem_o_leitor_segue(cliente):
+    """E cai nas recomendadas — todas — quando ele não segue ninguém com vaga."""
+    da_empresa = _publicar(cliente)
+    da_outra = _publicar(cliente, empresa=OUTRA_EMPRESA, titulo="Júnior em dados")
+
+    with _user_service(seguidos={ALUNO: [EMPRESA]}):
+        seguindo = cliente.get("/jobs/vagas", headers=_token(ALUNO)).json()
+    with _user_service():
+        sem_seguir = cliente.get("/jobs/vagas", headers=_token(OUTRO_ALUNO)).json()
+
+    assert [v["id"] for v in seguindo["itens"]] == [da_empresa["id"]]
+    # A recomendação de quem não segue ninguém: as duas, em vez de um vazio que o
+    # usuário leria como "não há vaga no Integra".
+    assert {v["id"] for v in sem_seguir["itens"]} == {da_empresa["id"], da_outra["id"]}
+
+
+def test_a_empresa_ve_as_proprias_vagas_sem_seguir_a_si_mesma(cliente):
+    """O próprio leitor entra sempre no conjunto, como no ramo "seguindo" do feed."""
+    minha = _publicar(cliente)
+    _publicar(cliente, empresa=OUTRA_EMPRESA, titulo="De outra empresa")
+
+    with _user_service():
+        lista = cliente.get("/jobs/vagas", headers=_token(EMPRESA, tipo="empresa")).json()
+
+    assert [v["id"] for v in lista["itens"]] == [minha["id"]]
+
+
+# ──────────────────────────────  remoção  ──────────────────────────────
+
+
+def test_apagar_vaga_aberta_e_recusado_com_409(cliente):
+    """Encerrar existe para isso: há processo em curso e gente esperando resposta."""
+    vaga = _publicar(cliente)
+    with _user_service():
+        resposta = cliente.delete(
+            f"/jobs/vagas/{vaga['id']}", headers=_token(EMPRESA, tipo="empresa")
+        )
+    assert resposta.status_code == 409
+    assert resposta.json()["code"] == "vaga_aberta"
+
+
+def test_a_empresa_apaga_a_vaga_encerrada_e_as_candidaturas_vao_junto(cliente):
+    vaga = _publicar(cliente)
+    with _user_service():
+        cabecalho = _token(EMPRESA, tipo="empresa")
+        cliente.post(f"/jobs/vagas/{vaga['id']}/candidaturas", headers=_token(ALUNO))
+        cliente.patch(f"/jobs/vagas/{vaga['id']}", json={"estado": "fechada"}, headers=cabecalho)
+
+        apagada = cliente.delete(f"/jobs/vagas/{vaga['id']}", headers=cabecalho)
+        detalhe = cliente.get(f"/jobs/vagas/{vaga['id']}", headers=cabecalho)
+        minhas = cliente.get("/jobs/candidaturas/me", headers=_token(ALUNO)).json()
+
+    assert apagada.status_code == 204
+    assert detalhe.status_code == 404
+    # `ON DELETE CASCADE`: a linha do aluno sai com a vaga, em vez de apontar para
+    # uma vaga que não existe mais.
+    assert minhas["itens"] == []
+
+
+def test_so_a_empresa_autora_apaga_e_outra_recebe_404(cliente):
+    vaga = _publicar(cliente)
+    with _user_service():
+        cliente.patch(
+            f"/jobs/vagas/{vaga['id']}",
+            json={"estado": "fechada"},
+            headers=_token(EMPRESA, tipo="empresa"),
+        )
+        de_outra = cliente.delete(
+            f"/jobs/vagas/{vaga['id']}", headers=_token(OUTRA_EMPRESA, tipo="empresa")
+        )
+        do_aluno = cliente.delete(f"/jobs/vagas/{vaga['id']}", headers=_token(ALUNO))
+
+    assert de_outra.status_code == 404
+    # O aluno nem chega ao portão da autoria: `EmpresaDep` recusa pelo token.
+    assert do_aluno.status_code == 403
 
 
 def test_os_filtros_de_tipo_e_modalidade(cliente):

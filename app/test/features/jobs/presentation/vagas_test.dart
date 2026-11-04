@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'package:integra/features/jobs/data/models/vaga.dart';
+import 'package:integra/features/profile/data/banco_falso.dart';
 import 'package:integra/features/profile/data/fixtures.dart';
 
 import '../../../helpers/bombear_app.dart';
@@ -195,13 +196,18 @@ void main() {
       expect(fechada.titulo, 'Trainee em produto');
     });
 
-    testWidgets('o filtro de encerradas é só da empresa', (tester) async {
+    testWidgets('o filtro de encerradas é só da empresa, e só das dela', (
+      tester,
+    ) async {
       await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
       await abrirVagas(tester);
       await abrirFiltro(tester);
       expect(find.text('Encerradas'), findsNothing);
 
-      await bombearAppAutenticado(tester, email: Fixtures.emailEmpresa);
+      // A empresa **autora** das vagas semeadas: a lista de encerradas é dela, e o
+      // serviço recusa com 403 a de qualquer outra conta — ligar o filtro liga
+      // "minhas vagas" junto, em vez de produzir o pedido que será recusado.
+      await bombearAppAutenticado(tester, email: Fixtures.emailEmpresaAtiva);
       await abrirVagas(tester);
       await abrirFiltro(tester);
       expect(find.text('Encerradas'), findsOne);
@@ -214,6 +220,87 @@ void main() {
 
       expect(find.text('Trainee em produto'), findsOne);
       expect(find.text('Estágio em desenvolvimento back-end'), findsNothing);
+    });
+
+    testWidgets('a empresa apaga a encerrada, e a aberta não oferece o botão', (
+      tester,
+    ) async {
+      final banco = await bombearAppAutenticado(
+        tester,
+        email: Fixtures.emailEmpresaAtiva,
+      );
+      await abrirVagas(tester);
+
+      // Na aberta não há botão de apagar: o serviço responderia 409, e encerrar
+      // existe justamente para terminar o processo sem apagar o histórico.
+      await tocar(tester, find.text('Estágio em desenvolvimento back-end'));
+      expect(find.byTooltip('Apagar vaga'), findsNothing);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      // A encerrada está na aba do próprio perfil — é lá que a empresa vê o que
+      // encerrou, e de lá que ela chega ao detalhe.
+      await tocar(tester, find.byTooltip('Perfil'));
+      await tocar(tester, find.byTooltip('Vagas'));
+      await tocar(tester, find.text('Trainee em produto'));
+
+      await tocar(tester, find.byTooltip('Apagar vaga'));
+      await tocar(tester, find.widgetWithText(ShadButton, 'Apagar'));
+
+      expect(banco.vagas.any((v) => v.titulo == 'Trainee em produto'), isFalse);
+    });
+  });
+
+  group('o conjunto da área de vagas', () {
+    testWidgets('deixar de seguir a empresa tira as vagas dela da área', (
+      tester,
+    ) async {
+      // A Ana segue a Nimbus, que é a autora das vagas semeadas. Depois de deixar de
+      // seguir, ela não segue mais ninguém — e aí a área cai nas **recomendadas**,
+      // que são todas, como o feed faz com os posts de quem não segue ninguém.
+      final banco = await bombearAppAutenticado(
+        tester,
+        email: Fixtures.emailDemo,
+      );
+      await abrirVagas(tester);
+      expect(find.text('Estágio em desenvolvimento back-end'), findsOne);
+
+      // Uma segunda empresa, com vaga própria: é o que distingue "só de quem eu
+      // sigo" de "todas" — sem ela as duas listas seriam iguais.
+      banco.usuarios[Fixtures.perfilEmpresa.id] = Fixtures.perfilEmpresa
+          .copyWith(ativadaEm: DateTime.utc(2026, 5, 5));
+      banco.vagas.add(
+        VagaFalsa(
+          id: banco.proximoId('vaga'),
+          empresaId: Fixtures.perfilEmpresa.id,
+          titulo: 'Estágio na Órbita',
+          descricao: 'Vaga de uma empresa que a Ana não segue.',
+          tipo: TipoDeVaga.estagio,
+          modalidade: Modalidade.remoto,
+          criadoEm: DateTime.utc(2026, 9, 22),
+        ),
+      );
+
+      // Seguindo só a Nimbus: a vaga da Órbita não entra.
+      await bombearAppAutenticado(
+        tester,
+        email: Fixtures.emailDemo,
+        banco: banco,
+      );
+      await abrirVagas(tester);
+      expect(find.text('Estágio em desenvolvimento back-end'), findsOne);
+      expect(find.text('Estágio na Órbita'), findsNothing);
+
+      // Deixando de seguir todo mundo, a área vira a lista recomendada — as duas.
+      banco.seguindoUsuarios.remove(Fixtures.perfilDemo.id);
+      await bombearAppAutenticado(
+        tester,
+        email: Fixtures.emailDemo,
+        banco: banco,
+      );
+      await abrirVagas(tester);
+      expect(find.text('Estágio em desenvolvimento back-end'), findsOne);
+      expect(find.text('Estágio na Órbita'), findsOne);
     });
   });
 

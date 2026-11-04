@@ -28,9 +28,10 @@ import 'package:integra/features/profile/data/models/perfil.dart';
 ///   institucional pendente vê a opção e lê que está em análise; esconder deixaria
 ///   ela sem entender o que falta, e habilitar renderia 403 no envio.
 ///
-/// O post profissional é a exceção que fica à vista para todas: a faculdade o vê
-/// esmaecido porque o que ela publica é comunicado, no pilar Acadêmico — e esse
-/// motivo é sobre **onde** a coisa mora, não sobre a conta não servir.
+/// Não há exceção: **nenhuma das três opções aparece para a conta que não a usa.** O
+/// post profissional ficava à vista da faculdade, esmaecido, com o motivo "isto mora
+/// no Acadêmico". Era uma distinção que só quem escreveu a tela lia — para quem usa,
+/// um controle morto no meio da lista é igual ao que diz "não é seu".
 ///
 /// A ativação é checada na mesma ordem do servidor: tipo primeiro, estado depois.
 class PublicarScreen extends ConsumerWidget {
@@ -74,24 +75,24 @@ class PublicarScreen extends ConsumerWidget {
                         'publica por aqui.',
               aoTocar: () => context.push(Rotas.comporPost),
             ),
-          _Opcao(
-            icone: LucideIcons.messageSquare,
-            cor: cores.profissional,
-            titulo: 'Post no feed profissional',
-            descricao:
-                'Para conversar com outros alunos e com empresas. Sem alcance '
-                'restrito: qualquer pessoa no Integra pode abrir.',
-            // Aluno e empresa publicam; faculdade não. Comunicado de instituição é o
-            // pilar Acadêmico, e a mesma coisa em dois lugares seria lida duas vezes.
-            impedimento: ehFaculdade
-                ? 'Contas de instituição publicam comunicados no pilar '
-                      'Acadêmico, não no Profissional.'
-                : !ativada
-                ? 'Sua conta está em análise. Quando for ativada, você publica '
-                      'por aqui.'
-                : null,
-            aoTocar: () => context.push(Rotas.comporPostProfissional),
-          ),
+          // Aluno e empresa publicam; a faculdade **não aparece** aqui. O que ela
+          // publica é comunicado, no pilar Acadêmico, e a opção esmaecida era a
+          // mesma coisa que a de comunicado para o aluno: um terço da tela gasto
+          // para dizer "isto não é seu".
+          if (!ehFaculdade)
+            _Opcao(
+              icone: LucideIcons.messageSquare,
+              cor: cores.profissional,
+              titulo: 'Post no feed profissional',
+              descricao:
+                  'Para conversar com outros alunos e com empresas. Sem alcance '
+                  'restrito: qualquer pessoa no Integra pode abrir.',
+              impedimento: ativada
+                  ? null
+                  : 'Sua conta está em análise. Quando for ativada, você publica '
+                        'por aqui.',
+              aoTocar: () => context.push(Rotas.comporPostProfissional),
+            ),
           // Só a empresa. Quem se candidata é aluno, e faculdade não contrata pelo
           // Integra — nenhum dos dois tem o que fazer com um formulário de vaga.
           if (ehEmpresa)

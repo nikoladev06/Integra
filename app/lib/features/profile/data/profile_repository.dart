@@ -85,6 +85,17 @@ abstract interface class ProfileRepository {
   /// `GET /universidades/{id}`. A tela que o aluno alcança pela busca.
   Future<PerfilDeUniversidade> perfilDaUniversidade(String universidadeId);
 
+  /// `GET /universidades/me`. A instituição da conta `faculdade` autenticada.
+  ///
+  /// Mesmo corpo da rota acima, porque é a mesma tela: o perfil da instituição,
+  /// visto por ela própria. Existe porque o elo conta → universidade mora no
+  /// `user-service`, e sem ela o app não teria o id para pedir nem os comunicados
+  /// nem os cursos.
+  ///
+  /// `temVinculo` e `seguindo` vêm falsos: vínculo é de aluno, e ninguém segue a si
+  /// mesmo.
+  Future<PerfilDeUniversidade> minhaUniversidade();
+
   /// `GET /busca`. A busca do cabeçalho, agrupada por tipo.
   Future<ResultadoDeBusca> buscar(String termo);
 

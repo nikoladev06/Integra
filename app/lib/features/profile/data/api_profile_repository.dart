@@ -115,6 +115,10 @@ class ApiProfileRepository implements ProfileRepository {
   );
 
   @override
+  Future<PerfilDeUniversidade> minhaUniversidade() async =>
+      PerfilDeUniversidade.fromJson(await _api.get('/universidades/me'));
+
+  @override
   Future<ResultadoDeBusca> buscar(String termo) async =>
       ResultadoDeBusca.fromJson(await _api.get('/busca', query: {'q': termo}));
 

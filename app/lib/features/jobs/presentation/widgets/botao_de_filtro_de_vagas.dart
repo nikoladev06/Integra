@@ -81,6 +81,11 @@ class BotaoDeFiltroDeVagas extends ConsumerWidget {
         // Só a empresa tem estas duas: "minhas vagas" e "encerradas" são as perguntas
         // de quem publica. Para o aluno, uma vaga encerrada é um beco — ele não pode
         // se candidatar —, e a dele em "minhas candidaturas" já mostra o estado da vaga.
+        //
+        // Os dois alternadores **se arrastam**, e não é conveniência: a lista de
+        // encerradas é da empresa autora, e o serviço recusa com 403 a de qualquer
+        // outra. Ligar "encerradas" liga "minhas vagas"; desligar "minhas vagas"
+        // devolve a lista às abertas, em vez de produzir o pedido que será recusado.
         if (ehEmpresa) ...[
           _Alternar(
             rotulo: 'Minhas vagas',
@@ -90,7 +95,7 @@ class BotaoDeFiltroDeVagas extends ConsumerWidget {
                 tipo: filtro.tipo,
                 modalidade: filtro.modalidade,
                 empresaId: ativo ? perfil!.id : null,
-                estado: filtro.estado,
+                estado: ativo ? filtro.estado : EstadoDaVaga.aberta,
               ),
             ),
           ),
@@ -101,7 +106,7 @@ class BotaoDeFiltroDeVagas extends ConsumerWidget {
               FiltroDeVagas(
                 tipo: filtro.tipo,
                 modalidade: filtro.modalidade,
-                empresaId: filtro.empresaId,
+                empresaId: ativo ? perfil!.id : filtro.empresaId,
                 estado: ativo ? EstadoDaVaga.fechada : EstadoDaVaga.aberta,
               ),
             ),

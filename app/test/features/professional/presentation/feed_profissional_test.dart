@@ -163,6 +163,28 @@ void main() {
       expect(find.textContaining('Comecei a estudar Kotlin'), findsOne);
     });
 
+    testWidgets('publicar pelo hub do rodapé termina no feed profissional', (
+      tester,
+    ) async {
+      // O caminho que faltava: pelo hub, `pop` devolvia o usuário **ao hub**, com a
+      // lista de opções de publicação no lugar do post que ele acabou de escrever.
+      await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
+      await tocar(tester, find.byTooltip('Publicar'));
+      await tocar(tester, find.text('Post no feed profissional'));
+
+      await tester.enterText(
+        find.byType(ShadTextarea).first,
+        'Primeiro post pelo rodapé.',
+      );
+      await tocar(tester, find.widgetWithText(ShadButton, 'Publicar'));
+
+      // No feed, e não no hub nem no formulário: o post está na lista, e as duas
+      // telas do caminho saíram da pilha.
+      expect(find.textContaining('Primeiro post pelo rodapé'), findsOne);
+      expect(find.text('Post no feed profissional'), findsNothing);
+      expect(find.byType(ShadTextarea), findsNothing);
+    });
+
     testWidgets('corpo vazio é recusado antes de sair da tela', (tester) async {
       await bombearAppAutenticado(tester, email: Fixtures.emailDemo);
       await abrirFeed(tester);

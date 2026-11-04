@@ -151,23 +151,19 @@ void main() {
       expect(find.text('Comunicado da instituição'), findsNothing);
     });
 
-    testWidgets('a faculdade vê comunicado, e o post no pilar errado', (
-      tester,
-    ) async {
+    testWidgets('a faculdade vê só o comunicado', (tester) async {
       await bombearAppAutenticado(tester, email: Fixtures.emailFaculdade);
       await tocar(tester, find.byTooltip('Publicar'));
 
       expect(find.text('Comunicado da instituição'), findsOne);
       expect(find.text('Vaga'), findsNothing);
 
-      // O post profissional continua à vista, esmaecido: este impedimento diz
-      // **onde** a coisa mora, e não que a conta não serve — é informação útil, ao
-      // contrário de "só contas de empresa publicam vagas".
-      expect(find.text('Post no feed profissional'), findsOne);
-      expect(
-        find.textContaining('publicam comunicados no pilar'),
-        findsOne,
-      );
+      // O post profissional **saiu**. Ele ficava à vista, esmaecido, com "isto mora
+      // no Acadêmico" escrito embaixo — uma distinção que só quem escreveu a tela
+      // lia. Para quem usa, um controle morto é igual ao que diz "não é seu", e era
+      // o mesmo que a empresa já não vê no comunicado.
+      expect(find.text('Post no feed profissional'), findsNothing);
+      expect(find.textContaining('publicam comunicados no pilar'), findsNothing);
     });
 
     testWidgets('a faculdade pendente lê que está em análise', (tester) async {
@@ -199,8 +195,9 @@ void main() {
       tester,
     ) async {
       // O hub passou a ser a lista do que a conta **pode** publicar, e não o catálogo
-      // do produto com dois terços riscados. O que sobra esmaecido é só "ainda não" e
-      // "noutro pilar" — nunca "este tipo de conta não".
+      // do produto com dois terços riscados. O único impedimento que sobrou esmaecido
+      // é "ainda não" — a conta em análise. "Noutro pilar" saiu junto com "este tipo
+      // de conta não": as duas eram recusas permanentes, e a opção não aparece.
       for (final conta in [
         Fixtures.emailDemo,
         Fixtures.emailFaculdade,

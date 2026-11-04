@@ -15,7 +15,7 @@ candidatos. Mesma disciplina das duas recusas do "inserir CPF" no user-service.
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import Select, and_, func, literal, select, tuple_
+from sqlalchemy import Select, and_, exists, func, literal, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from integra_shared import paginacao
@@ -38,6 +38,20 @@ LinhaDeVaga = tuple[Vaga, int, bool]
 def nao_encontrada() -> AppError:
     """Vaga inexistente — ou de outra empresa, nas rotas que exigem ser a autora."""
     return AppError(code="nao_encontrado", message="Vaga não encontrada", status_code=404)
+
+
+def _somente_a_autora() -> AppError:
+    """A lista de encerradas é da empresa que as encerrou, e de mais ninguém.
+
+    403 e não 404: o recurso pedido é "a lista de fechadas de outra conta", e a
+    recusa não revela vaga nenhuma — diferente de `nao_encontrada`, que existe
+    justamente para não confirmar a existência de um id.
+    """
+    return AppError(
+        code="somente_a_autora",
+        message="Só a empresa que publicou vê as vagas que encerrou",
+        status_code=403,
+    )
 
 
 def _campo_invalido(campo: str, mensagem: str) -> AppError:
@@ -146,6 +160,32 @@ async def editar(
     return vaga
 
 
+async def remover(sessao: AsyncSession, vaga_id: UUID, usuario: UsuarioAutenticado) -> None:
+    """Apaga uma vaga **encerrada** da própria empresa. As candidaturas vão junto.
+
+    É a exceção à regra de que encerrar não é apagar, e ela é estreita de propósito:
+    só a autora, e só depois de encerrar. Apagar uma vaga aberta tiraria do ar um
+    processo em curso junto com as candidaturas de quem está esperando resposta —
+    encerrar existe para isso, e preserva o histórico dos dois lados.
+
+    Depois de encerrada, a vaga é registro velho, e a empresa que a publicou é quem
+    decide se o mantém. Por `ON DELETE CASCADE`, as candidaturas somem com ela: o
+    aluno deixa de ver em "minhas candidaturas" um processo que a empresa apagou, em
+    vez de uma linha apontando para uma vaga que não existe mais.
+    """
+    vaga = await _obter_da_empresa(sessao, vaga_id, usuario)
+
+    if vaga.aberta:
+        raise AppError(
+            code="vaga_aberta",
+            message="Encerre a vaga antes de apagá-la",
+            status_code=409,
+        )
+
+    await sessao.delete(vaga)
+    await sessao.flush()
+
+
 async def _obter_da_empresa(
     sessao: AsyncSession, vaga_id: UUID, usuario: UsuarioAutenticado
 ) -> Vaga:
@@ -209,6 +249,21 @@ async def obter(sessao: AsyncSession, vaga_id: UUID, usuario: UsuarioAutenticado
     return (linha[0], linha[1], linha[2])
 
 
+async def _alguma_vaga(sessao: AsyncSession, empresas: list[UUID], estado: EstadoDaVaga) -> bool:
+    """Se alguma das empresas do conjunto tem vaga neste estado.
+
+    É o que decide entre a lista seguida e as recomendadas, e é uma pergunta por
+    página em vez de "a primeira página veio vazia": aquela versão responderia
+    diferente na página 1 e na página 2, e o botão de carregar mais devolveria lista
+    vazia no meio da rolagem.
+    """
+    return bool(
+        await sessao.scalar(
+            select(exists().where(and_(Vaga.empresa_id.in_(empresas), Vaga.estado == estado)))
+        )
+    )
+
+
 async def listar(
     sessao: AsyncSession,
     usuario: UsuarioAutenticado,
@@ -216,6 +271,7 @@ async def listar(
     cursor: str | None,
     *,
     empresa_id: UUID | None = None,
+    seguidas: list[UUID] | None = None,
     tipo: TipoDeVaga | None = None,
     modalidade: Modalidade | None = None,
     estado: EstadoDaVaga = EstadoDaVaga.ABERTA,
@@ -226,11 +282,26 @@ async def listar(
     chamada interna que esqueça o parâmetro lista as abertas, e não as fechadas junto.
     Uma listagem que mistura as duas é pior que uma lista curta — o aluno se candidata
     e recebe 409.
+
+    **Fechada é da empresa autora.** Pedir `estado=fechada` sem ser dela responde 403.
+    A regra mora aqui, e não na rota, pelo motivo de sempre: a próxima chamada que
+    listar vagas herda o portão em vez de esquecê-lo.
+
+    `seguidas` é o conjunto do feed — quem o leitor segue, mais ele mesmo —, e vale
+    apenas na **área de vagas** (sem `empresa_id`). Nenhuma das empresas seguidas
+    tendo vaga no estado pedido, a lista cai nas recomendadas: todas, como o feed faz
+    com os posts de quem não segue ninguém. Um vazio ali seria pior que uma lista
+    ampla, porque o usuário concluiria que não há vaga no Integra.
     """
+    if estado == EstadoDaVaga.FECHADA and empresa_id != usuario.id:
+        raise _somente_a_autora()
+
     consulta = _consulta_de_leitura(usuario).where(Vaga.estado == estado)
 
     if empresa_id is not None:
         consulta = consulta.where(Vaga.empresa_id == empresa_id)
+    elif seguidas and await _alguma_vaga(sessao, seguidas, estado):
+        consulta = consulta.where(Vaga.empresa_id.in_(seguidas))
     if tipo is not None:
         consulta = consulta.where(Vaga.tipo == tipo)
     if modalidade is not None:

@@ -1,4 +1,6 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'package:integra/features/profile/data/fixtures.dart';
 
@@ -77,21 +79,69 @@ void main() {
       expect(formacao, lessThan(vinculo));
     });
 
-    testWidgets('conta institucional não tem aba de currículo', (tester) async {
+    testWidgets('a faculdade vê o próprio perfil de instituição', (
+      tester,
+    ) async {
       await bombearAppAutenticado(tester, email: Fixtures.emailFaculdade);
       await abrirPerfil(tester);
 
-      // Organização não estuda em lugar nenhum: uma aba vazia por definição seria
-      // pior que aba nenhuma, então não há barra de abas.
+      // Organização não estuda em lugar nenhum, e currículo não é dela. O que ela vê
+      // é **o perfil da instituição** — o mesmo que qualquer pessoa abre pela busca,
+      // com as três abas por alcance. Antes era uma identificação sem abas e uma
+      // frase apontando para uma tela que ela não tinha como abrir: o caminho era a
+      // busca, e a busca não devolve a si mesma.
       expect(find.byTooltip('Currículo'), findsNothing);
-      expect(find.byTooltip('Publicações'), findsNothing);
+      // `findsWidgets`: a sigla é o título do perfil e também o cabeçalho de cada
+      // card de comunicado na lista.
+      expect(find.text(Fixtures.fatecRp.sigla), findsWidgets);
+      expect(find.byTooltip('Geral'), findsOne);
+      expect(find.byTooltip('Institucional'), findsOne);
+      expect(find.byTooltip('Por curso'), findsOne);
 
-      // E o corpo aponta para onde os comunicados dela realmente moram, em vez de
-      // duplicar a lista.
-      expect(
-        find.text('Seus comunicados ficam no perfil da instituição'),
-        findsOne,
+      // O menu da **conta** no canto, e não o do vínculo: inserir CPF não existe
+      // para quem é a instituição, e sair da conta precisa morar em algum lugar.
+      await tocar(tester, find.byTooltip('Opções da conta'));
+      expect(find.text('Administração da instituição'), findsOne);
+      expect(find.text('Sair da conta'), findsOne);
+      expect(find.text('Inserir CPF'), findsNothing);
+    });
+
+    testWidgets('a faculdade vê os próprios comunicados em toda aba', (
+      tester,
+    ) async {
+      await bombearAppAutenticado(tester, email: Fixtures.emailFaculdade);
+      await abrirPerfil(tester);
+
+      // Ela é a autora, e o autor alcança o que escreveu em qualquer alcance — é a
+      // primeira linha da matriz de visibilidade, e vale sem vínculo nenhum.
+      await tocar(tester, find.byTooltip('Institucional'));
+      expect(find.textContaining('biblioteca funcionará em horário reduzido'), findsOne);
+
+      await tocar(tester, find.byTooltip('Por curso'));
+      // Sem filtro: a aba nasce com todos os cursos, e o restrito aparece.
+      expect(find.textContaining('projeto integrador de ADS'), findsOne);
+    });
+
+    testWidgets('o filtro de curso estreita a aba restrita', (tester) async {
+      await bombearAppAutenticado(tester, email: Fixtures.emailFaculdade);
+      await abrirPerfil(tester);
+      await tocar(tester, find.byTooltip('Por curso'));
+
+      // O botão só existe nesta aba, e só para a instituição: para o aluno, "por
+      // curso" já é o curso dele.
+      await tocar(tester, find.byIcon(LucideIcons.graduationCap).first);
+      await tocar(
+        tester,
+        find.descendant(
+          of: find.byType(MenuItemButton),
+          matching: find.text('Gestão Empresarial'),
+        ),
       );
+
+      // O comunicado restrito é de ADS: filtrando por Gestão, a lista fica vazia e
+      // o vazio diz por quê, em vez de parecer que ela não publicou nada.
+      expect(find.textContaining('projeto integrador de ADS'), findsNothing);
+      expect(find.textContaining('Nada restrito a este curso'), findsOne);
     });
   });
 

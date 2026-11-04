@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Integra — jobs-service
-  version: 1.0.0
+  version: 2.0.0
   description: |
     Vagas de estágio e júnior publicadas por contas `empresa`, e candidaturas de
     alunos. Fecha o rascunho `jobs.draft.yaml` (0.1.0-draft) na Sprint 5.
@@ -31,6 +31,24 @@ info:
       (aceita/recusada) foi deixado de fora de propósito: sem mensagens diretas —
       que não têm serviço — "aceita" é um estado que não leva a lugar nenhum, e o
       aluno ficaria esperando um contato que o app não sabe entregar.
+
+    ## O que mudou na 2.0.0, e por que é maior e não menor
+
+    Duas mudanças na **área de vagas**, e a primeira restringe o que a 1.0.0
+    permitia — por isso a versão maior, embora nenhum campo tenha saído:
+
+    - **a lista de encerradas é da empresa autora** (403 para qualquer outra
+      conta). Na 1.0.0 qualquer conta pedia as fechadas de qualquer empresa, com
+      o argumento de que vaga fechada não é conteúdo restrito, só conteúdo
+      velho. É verdade sobre a vaga **por id**, que segue legível por todos, e
+      falso sobre a lista: no perfil de uma empresa, para o aluno, ela só mostra
+      becos — e o histórico é de quem publicou;
+    - **a listagem sem `empresaId` é das empresas que o leitor segue**, e cai em
+      todas quando ele não segue nenhuma que tenha vaga. Era a lista inteira,
+      sempre, o que fazia "deixar de seguir" não ter efeito nenhum sobre a área
+      de vagas enquanto tinha sobre o feed de posts.
+
+    E uma adição: `DELETE /jobs/vagas/{id}`, que só aceita vaga **encerrada**.
 
     ## Filtros
 
@@ -67,9 +85,16 @@ paths:
       summary: Lista vagas
       operationId: listVagas
       description: |
-        Abertas por padrão. `estado=fechada` existe para a empresa ver o que
-        publicou e encerrou — é a única tela que pede a lista de fechadas, e ela
-        é filtrada por `empresaId` de qualquer forma.
+        Abertas por padrão. **`estado=fechada` é da empresa autora**: pedir as
+        fechadas de outra conta responde 403 (`somente_a_autora`). Uma vaga
+        encerrada não é conteúdo restrito, mas é histórico de quem a publicou —
+        para aluno e faculdade ela só mostraria becos no perfil da empresa.
+
+        Sem `empresaId`, a lista é a **área de vagas**: só das empresas que o
+        leitor segue (mais ele mesmo). Não seguindo nenhuma que tenha vaga no
+        estado pedido, ela cai nas recomendadas — todas —, igual ao feed de posts
+        de quem ainda não segue ninguém. Um vazio ali faria o usuário concluir
+        que não há vaga no Integra.
 
         `candidaturaEnviada` vem preenchido em cada item, para o botão da lista
         já nascer no estado certo. Sem ele a tela mostraria "candidatar-se" em
@@ -102,6 +127,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PaginaDeVagas' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteAAutora' }
         '503': { $ref: '#/components/responses/DependenciaIndisponivel' }
 
     post:
@@ -181,6 +207,31 @@ paths:
         '403': { $ref: '#/components/responses/SomenteEmpresa' }
         '404': { $ref: '#/components/responses/NaoEncontrado' }
         '422': { $ref: '#/components/responses/ValidationError' }
+
+    delete:
+      tags: [vagas]
+      summary: Apaga uma vaga encerrada (só a empresa autora)
+      operationId: deleteVaga
+      description: |
+        A exceção estreita à regra do `PATCH`: **só depois de encerrar**. Com a
+        vaga aberta, responde 409 (`vaga_aberta`) — há processo em curso e gente
+        esperando resposta, e encerrar existe exatamente para isso.
+
+        Encerrada, a vaga é registro velho, e quem a publicou decide se o mantém.
+        As candidaturas vão junto, por `ON DELETE CASCADE`: o aluno deixa de ver
+        em "minhas candidaturas" um processo que a empresa apagou, em vez de uma
+        linha apontando para uma vaga que não existe mais.
+      responses:
+        '204': { description: Apagada }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SomenteEmpresa' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409':
+          description: A vaga ainda está aberta — encerre antes de apagar.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: vaga_aberta, message: 'Encerre a vaga antes de apagá-la' }
 
   # ──────────────────────────  candidaturas  ──────────────────────────
   /jobs/vagas/{vagaId}/candidaturas:
@@ -560,6 +611,19 @@ components:
               value:
                 code: conta_pendente
                 message: 'Sua conta ainda está em análise. Você será avisado quando for ativada.'
+
+    SomenteAAutora:
+      description: |
+        A lista de vagas **encerradas** é da empresa que as encerrou. Aluno e
+        faculdade não a pedem, e uma empresa não pede a de outra.
+
+        403 e não 404: o recurso recusado é "a lista de fechadas de outra conta",
+        e a recusa não revela vaga nenhuma — diferente do `NaoEncontrado`, que
+        existe para não confirmar a existência de um id.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: somente_a_autora, message: 'Só a empresa que publicou vê as vagas que encerrou' }
 
     SomenteAluno:
       description: Candidatar-se exige conta `aluno`.

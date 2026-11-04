@@ -9,6 +9,7 @@ import 'package:integra/core/router/app_router.dart';
 import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/core/theme/tokens.dart';
 import 'package:integra/features/auth/presentation/sessao_controller.dart';
+import 'package:integra/features/institution/presentation/perfil_de_universidade_screen.dart';
 import 'package:integra/features/jobs/presentation/jobs_providers.dart';
 import 'package:integra/features/jobs/presentation/widgets/vaga_card.dart';
 import 'package:integra/features/professional/presentation/profissional_providers.dart';
@@ -96,6 +97,14 @@ class PerfilScreen extends ConsumerWidget {
         // O roteador já impede chegar aqui sem sessão; isto cobre o instante entre o
         // logout e a troca de rota.
         return const Scaffold(body: SizedBox.shrink());
+      }
+      // **A conta `faculdade` é a instituição**, e o perfil dela é o perfil de
+      // universidade — o mesmo que qualquer pessoa abre pela busca, com as três abas
+      // por alcance. Esta tela mostrava, para ela, uma identificação sem abas e uma
+      // frase apontando para "o perfil da instituição": uma tela que ela não tinha
+      // como abrir, porque o caminho era a busca e a busca não devolve a si mesma.
+      if (perfil.tipo == TipoConta.faculdade) {
+        return const PerfilDeUniversidadeScreen();
       }
       return _Perfil(perfil: perfil, proprio: true);
     }
@@ -216,7 +225,7 @@ class _PerfilState extends ConsumerState<_Perfil> {
             // ação aqui é sobre a **própria conta**, e mandar mensagem para si não
             // existe. No perfil de outra pessoa é o contrário, e o padrão do
             // cabeçalho — o botão de chat — é exatamente o certo.
-            direita: widget.proprio ? _MenuDaConta(perfil: _perfil) : null,
+            direita: widget.proprio ? MenuDaConta(perfil: _perfil) : null,
           ),
 
           SliverPadding(
@@ -229,7 +238,7 @@ class _PerfilState extends ConsumerState<_Perfil> {
             sliver: SliverList.list(
               children: [
                 if (widget.proprio && _perfil.aguardandoAtivacao) ...[
-                  const _AvisoDeAnalise(),
+                  const AvisoDeAnalise(),
                   const SizedBox(height: Espaco.md),
                 ],
                 _Identificacao(perfil: _perfil),
@@ -374,8 +383,12 @@ class _BotaoDeSeguirState extends ConsumerState<_BotaoDeSeguir> {
 /// As quatro ações que se fazem **sobre a própria conta**, e não sobre o que ela
 /// publicou. A administração da instituição entra aqui pelo mesmo critério das
 /// outras três: é ação de conta, e com as abas não teria onde morar no corpo.
-class _MenuDaConta extends ConsumerWidget {
-  const _MenuDaConta({required this.perfil});
+///
+/// Público porque o perfil da própria instituição é outra tela — o perfil de
+/// universidade — e precisa do mesmo menu no mesmo canto. Sem ele ali, a conta
+/// `faculdade` não teria como sair da conta nem chegar à administração.
+class MenuDaConta extends ConsumerWidget {
+  const MenuDaConta({required this.perfil, super.key});
 
   final Perfil perfil;
 
@@ -484,12 +497,15 @@ class _PostsDaConta extends ConsumerWidget {
   }
 }
 
-/// As vagas de uma empresa — **abertas e encerradas**.
+/// As vagas de uma empresa: as abertas para todos, **as encerradas só para ela**.
 ///
-/// É a diferença entre esta aba e a área de vagas do pilar: lá a lista é das abertas,
-/// porque uma vaga encerrada é um beco para quem procura trabalho. Aqui a pergunta é
-/// "o que esta empresa publicou", e o histórico é parte da resposta — a etiqueta de
-/// "Encerrada" no card diz qual é qual.
+/// É a diferença entre esta aba e a área de vagas do pilar: lá a lista é só das
+/// abertas, sempre. Aqui, para a própria empresa, a pergunta é "o que eu publiquei", e
+/// o histórico é parte da resposta — a etiqueta de "Encerrada" no card diz qual é qual,
+/// e é de lá que ela apaga a que não quer mais.
+///
+/// Para aluno e faculdade, encerrada não entra: o aluno não pode se candidatar, e
+/// mostrar o beco no perfil da empresa só o faria tocar para descobrir isso.
 ///
 /// Mesmos cards da área de vagas, e o toque leva ao mesmo detalhe: uma vaga é a mesma
 /// coisa nos dois lugares, e um card próprio daqui divergiria no primeiro campo novo.
@@ -502,7 +518,8 @@ class _VagasDaEmpresa extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tema = ShadTheme.of(context);
-    final vagas = ref.watch(vagasDaEmpresaProvider(empresaId));
+    final chave = (empresaId: empresaId, propria: proprio);
+    final vagas = ref.watch(vagasDaEmpresaProvider(chave));
 
     return switch (vagas) {
       AsyncError(:final error) => EstadoVazio(
@@ -512,7 +529,7 @@ class _VagasDaEmpresa extends ConsumerWidget {
             ? error.mensagem
             : 'As vagas não vieram agora. Tente de novo em instantes.',
         acao: ShadButton.outline(
-          onPressed: () => ref.invalidate(vagasDaEmpresaProvider(empresaId)),
+          onPressed: () => ref.invalidate(vagasDaEmpresaProvider(chave)),
           child: const Text('Tentar de novo'),
         ),
       ),
@@ -544,10 +561,13 @@ class _VagasDaEmpresa extends ConsumerWidget {
 
 /// As publicações de uma faculdade: existem, mas moram noutro lugar.
 ///
-/// Só a conta `faculdade` chega aqui. A empresa tinha esta mesma tela até a Sprint 5 e
-/// era errado: ela não tem instituição nenhuma, então a frase apontava para uma
-/// página que não existe. O perfil dela agora tem as duas abas que ela de fato enche —
-/// posts e vagas.
+/// Só a conta `faculdade` chega aqui, e **só a de outra pessoa** — tocar no nome de
+/// uma instituição num card leva a `/usuarios/{id}`, que é esta tela. O próprio
+/// perfil dela não passa mais por aqui: é o perfil de universidade, com as três abas.
+///
+/// A empresa tinha esta mesma tela até a Sprint 5 e era errado: ela não tem
+/// instituição nenhuma, então a frase apontava para uma página que não existe. O
+/// perfil dela agora tem as duas abas que ela de fato enche — posts e vagas.
 class _PostsDaInstituicao extends StatelessWidget {
   const _PostsDaInstituicao();
 
@@ -558,13 +578,13 @@ class _PostsDaInstituicao extends StatelessWidget {
     return EstadoVazio(
       icone: LucideIcons.megaphone,
       cor: cores.academico,
-      titulo: 'Seus comunicados ficam no perfil da instituição',
+      titulo: 'Os comunicados ficam no perfil da instituição',
       // Aponta em vez de duplicar: os comunicados já têm uma tela, com as três abas
       // por alcance, e listá-los aqui também criaria dois lugares para manter.
       descricao:
-          'Eles aparecem no feed Acadêmico de quem tem vínculo, e no perfil '
-          'público da instituição — separados por alcance: geral, interno e por '
-          'curso. Publique pelo botão do rodapé.',
+          'Eles aparecem no feed Acadêmico de quem tem vínculo, e no perfil da '
+          'instituição — separados por alcance: geral, interno e por curso. '
+          'Busque pela sigla dela para abrir.',
     );
   }
 }
@@ -665,8 +685,8 @@ class _Iniciais extends StatelessWidget {
 ///
 /// Só no próprio perfil: `ativadaEm` não existe em `PerfilPublico`, e o estado de
 /// análise de uma conta é assunto dela com o Integra, não de quem abre o perfil.
-class _AvisoDeAnalise extends StatelessWidget {
-  const _AvisoDeAnalise();
+class AvisoDeAnalise extends StatelessWidget {
+  const AvisoDeAnalise({super.key});
 
   @override
   Widget build(BuildContext context) {

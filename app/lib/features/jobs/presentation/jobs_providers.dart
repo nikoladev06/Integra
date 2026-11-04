@@ -122,32 +122,46 @@ class VagasNotifier extends AsyncNotifier<VagasState> {
   }
 }
 
-/// As vagas de uma empresa — a aba de vagas do perfil dela. **Abertas e encerradas.**
+/// As vagas de uma empresa — a aba de vagas do perfil dela.
+///
+/// **As encerradas só para ela.** Era "abertas e encerradas" para todo mundo, e
+/// estava errado: para o aluno uma vaga encerrada é um beco — ele não pode se
+/// candidatar —, e para a faculdade é registro que não lhe diz nada. O histórico é de
+/// quem publicou, e o serviço recusa a lista de fechadas de outra conta com 403; pedir
+/// as duas sempre faria a aba inteira cair no erro.
 ///
 /// Duas chamadas, e não uma, porque `GET /jobs/vagas` filtra por **um** estado: é
 /// decisão do contrato, e pelo motivo certo — na área de vagas uma lista misturada faz
-/// o aluno se candidatar a uma vaga fechada e levar 409. No perfil da empresa a
-/// pergunta é outra, "o que eu publiquei", e aí as duas entram; as abertas primeiro,
-/// porque são as que ainda recebem candidatura.
+/// o aluno se candidatar a uma vaga fechada e levar 409. No próprio perfil a pergunta
+/// é outra, "o que eu publiquei", e aí as duas entram; as abertas primeiro, porque são
+/// as que ainda recebem candidatura.
 ///
 /// ponytail: só a primeira página de cada estado. Paginar quando uma empresa passar de
 /// 20 vagas em um deles — hoje a aba é um resumo do próprio perfil, não a área de busca.
 final vagasDaEmpresaProvider = FutureProvider.autoDispose
-    .family<List<Vaga>, String>((ref, empresaId) async {
+    .family<List<Vaga>, AbaDeVagasDoPerfil>((ref, aba) async {
       final repo = ref.watch(jobsRepositoryProvider);
 
       final paginas = await Future.wait([
-        repo.vagas(filtro: FiltroDeVagas(empresaId: empresaId)),
-        repo.vagas(
-          filtro: FiltroDeVagas(
-            empresaId: empresaId,
-            estado: EstadoDaVaga.fechada,
+        repo.vagas(filtro: FiltroDeVagas(empresaId: aba.empresaId)),
+        if (aba.propria)
+          repo.vagas(
+            filtro: FiltroDeVagas(
+              empresaId: aba.empresaId,
+              estado: EstadoDaVaga.fechada,
+            ),
           ),
-        ),
       ]);
 
       return [for (final pagina in paginas) ...pagina.itens];
     });
+
+/// A chave da aba de vagas do perfil: a empresa, e se quem olha é ela.
+///
+/// Um record em vez de só o id porque as duas partes decidem a **mesma** chamada: a
+/// lista de fechadas entra ou não, e uma família por id guardaria a resposta de um
+/// leitor para o outro.
+typedef AbaDeVagasDoPerfil = ({String empresaId, bool propria});
 
 /// Uma vaga por id, para a tela de detalhe.
 final vagaProvider = FutureProvider.autoDispose.family<Vaga, String>(

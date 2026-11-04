@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'package:integra/core/error/failure.dart';
 import 'package:integra/core/providers.dart';
+import 'package:integra/core/router/app_router.dart';
 import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/features/jobs/data/models/vaga.dart';
 import 'package:integra/features/jobs/presentation/jobs_providers.dart';
+import 'package:integra/features/professional/presentation/profissional_providers.dart';
 
 /// Publicar ou editar uma vaga.
 ///
@@ -119,8 +122,23 @@ class _ComporVagaScreenState extends ConsumerState<ComporVagaScreen> {
       ref.invalidate(vagasProvider);
 
       if (!mounted) return;
-      Navigator.of(context).pop();
-      ShadToaster.of(context).show(
+      final toaster = ShadToaster.of(context);
+
+      // **Publicar leva à aba de vagas; editar volta para o detalhe.** Quem publicou
+      // quer ver a vaga na lista — e pelo hub do rodapé o `pop` o devolvia ao hub,
+      // olhando opções de publicação em vez da vaga que acabou de abrir.
+      if (_editando) {
+        Navigator.of(context).pop();
+      } else {
+        ref.read(abaDoProfissionalProvider.notifier).trocar(
+          AbaDoProfissional.vagas,
+        );
+        // O toaster é lido antes de navegar: ele sobrevive à troca de pilha, o
+        // `context` desta tela não.
+        context.go(Rotas.profissional);
+      }
+
+      toaster.show(
         ShadToast(
           description: Text(_editando ? 'Vaga atualizada.' : 'Vaga publicada.'),
         ),

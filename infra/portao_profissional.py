@@ -540,6 +540,64 @@ def main() -> int:
         "e quem JÁ se candidatou continua recebendo a própria candidatura, não um 409",
     )
 
+    fechadas_do_aluno = cliente.get("/jobs/vagas", params={"estado": "fechada"}, headers=aluna)
+    conferir(
+        fechadas_do_aluno.status_code == 403
+        and fechadas_do_aluno.json().get("code") == "somente_a_autora",
+        f"a lista de encerradas é da empresa autora — veio {fechadas_do_aluno.status_code}",
+    )
+    fechadas_da_empresa = _exigir(
+        cliente.get(
+            "/jobs/vagas",
+            params={"estado": "fechada", "empresaId": id_de(empresa)},
+            headers=empresa,
+        ),
+        200,
+        "a empresa lista as próprias encerradas",
+    )
+    conferir(
+        vaga["id"] in {v["id"] for v in fechadas_da_empresa["itens"]},
+        "e a vaga encerrada está lá — é o histórico dela, e de onde ela a apaga",
+    )
+
+    print("\n11b. apagar é só depois de encerrar, e leva as candidaturas junto")
+    aberta_de_novo = _exigir(
+        cliente.post(
+            "/jobs/vagas",
+            json={
+                "titulo": "Vaga para apagar",
+                "descricao": "Publicada para o portão provar as duas recusas do DELETE.",
+                "tipo": "junior",
+                "modalidade": "remoto",
+            },
+            headers=empresa,
+        ),
+        201,
+        "publicar a vaga do teste de remoção",
+    )
+    recusa_aberta = cliente.delete(f"/jobs/vagas/{aberta_de_novo['id']}", headers=empresa)
+    conferir(
+        recusa_aberta.status_code == 409 and recusa_aberta.json().get("code") == "vaga_aberta",
+        f"apagar vaga ABERTA é recusado com 409 — veio {recusa_aberta.status_code}",
+    )
+
+    de_outra_conta = cliente.delete(f"/jobs/vagas/{vaga['id']}", headers=aluna)
+    conferir(de_outra_conta.status_code == 403, "e o aluno não apaga vaga de ninguém")
+
+    _exigir(
+        cliente.patch(
+            f"/jobs/vagas/{aberta_de_novo['id']}", json={"estado": "fechada"}, headers=empresa
+        ),
+        200,
+        "encerrar a vaga do teste de remoção",
+    )
+    apagada = cliente.delete(f"/jobs/vagas/{aberta_de_novo['id']}", headers=empresa)
+    conferir(apagada.status_code == 204, f"encerrada, ela é apagada — veio {apagada.status_code}")
+    conferir(
+        cliente.get(f"/jobs/vagas/{aberta_de_novo['id']}", headers=empresa).status_code == 404,
+        "e deixa de existir para todos: sem remoção lógica",
+    )
+
     print("\n12. a URL de upload é assinada, e os bytes não passam pelos serviços")
     url_avatar = _exigir(
         cliente.post(

@@ -312,6 +312,39 @@ class FakeProfileRepository implements ProfileRepository {
   }
 
   @override
+  Future<PerfilDeUniversidade> minhaUniversidade() async {
+    await _esperar();
+    final eu = _banco.usuarioAtual;
+
+    if (eu.tipo != TipoConta.faculdade) {
+      throw const FalhaDePermissao(
+        'Sua conta não tem permissão para esta ação',
+      );
+    }
+
+    // **Sem exigir ativação**, diferente de `_minhaInstituicao()`: ler o próprio
+    // perfil não é agir. A conta em análise entra, vê o que publicará e lê o aviso
+    // de análise; o que ela não faz — publicar, matricular — é recusado onde é feito.
+    final id = _banco.universidadeDaConta(eu.id);
+    final universidade = id == null ? null : _banco.universidadePorId(id);
+    if (universidade == null) {
+      throw const FalhaDePermissao(
+        'Esta conta não administra nenhuma instituição',
+      );
+    }
+
+    return PerfilDeUniversidade(
+      id: universidade.id,
+      nome: universidade.nome,
+      sigla: universidade.sigla,
+      // Vínculo é de aluno, e ninguém segue a si mesmo. Os dois decidem um menu que
+      // a própria conta não usa — ela tem o menu da conta no mesmo canto.
+      temVinculo: false,
+      seguindo: false,
+    );
+  }
+
+  @override
   Future<ResultadoDeBusca> buscar(String termo) async {
     await _esperar();
 

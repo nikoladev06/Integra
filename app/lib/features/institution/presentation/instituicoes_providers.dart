@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:integra/core/providers.dart';
+import 'package:integra/features/auth/presentation/sessao_controller.dart';
 import 'package:integra/features/profile/data/models/instituicao.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
 
@@ -29,3 +30,16 @@ final perfilDeUniversidadeProvider = FutureProvider.autoDispose
           .watch(profileRepositoryProvider)
           .perfilDaUniversidade(universidadeId),
     );
+
+/// A instituição da conta `faculdade` autenticada — **o próprio perfil dela**.
+///
+/// Separado do de cima porque o id não existe no cliente: o elo conta →
+/// universidade é uma coluna do `user-service`, e é a rota `/universidades/me` que o
+/// resolve. Observa a sessão, senão trocar de conta mostraria a instituição da
+/// anterior.
+final minhaUniversidadeProvider = FutureProvider<PerfilDeUniversidade>((
+  ref,
+) async {
+  ref.watch(perfilAtualProvider);
+  return ref.watch(profileRepositoryProvider).minhaUniversidade();
+});

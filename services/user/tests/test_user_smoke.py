@@ -29,6 +29,20 @@ def test_health_responde_e_identifica_o_servico():
     assert (r.status_code == 200) == (corpo["status"] == "ok")
 
 
+def test_universidades_me_e_rota_propria_e_nao_um_id_chamado_me():
+    """A ordem de registro, afirmada: `/universidades/me` antes da parametrizada.
+
+    Registrada depois, a rota de `{universidadeId}` captura "me" como identificador
+    e o FastAPI responde **422** ao validar o UUID — sem nunca chegar na rota certa.
+    O 401 sem token é a prova de que o caminho foi resolvido: a recusa é de
+    autenticação, e não de formato.
+
+    Sem banco no ar o resultado é o mesmo, porque a dependência de sessão só entra
+    depois da autenticação.
+    """
+    assert TestClient(app).get("/universidades/me").status_code == 401
+
+
 def test_o_banco_e_uma_dependencia_declarada():
     """O /health tem que CHECAR o banco, não só responder.
 
