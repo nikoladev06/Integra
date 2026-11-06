@@ -11,6 +11,7 @@ import 'package:integra/features/auth/domain/auth_validators.dart';
 import 'package:integra/features/auth/presentation/sessao_controller.dart';
 import 'package:integra/features/profile/data/fixtures.dart';
 import 'package:integra/shared/domain/documentos.dart';
+import 'package:integra/shared/widgets/campo_de_senha.dart';
 
 /// Entrada no app.
 ///
@@ -119,15 +120,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: Espaco.md),
 
-                    ShadInputFormField(
-                      id: 'senha',
-                      label: const Text('Senha'),
-                      placeholder: const Text('Sua senha'),
-                      obscureText: true,
-                      autofillHints: const [AutofillHints.password],
-                      textInputAction: TextInputAction.done,
-                      validator: validarSenha,
-                      onSubmitted: (_) => _entrar(),
+                    CampoDeSenha(
+                      construir: (oculta, olho) => ShadInputFormField(
+                        id: 'senha',
+                        label: const Text('Senha'),
+                        placeholder: const Text('Sua senha'),
+                        obscureText: oculta,
+                        trailing: olho,
+                        autofillHints: const [AutofillHints.password],
+                        textInputAction: TextInputAction.done,
+                        validator: validarSenha,
+                        onSubmitted: (_) => _entrar(),
+                      ),
                     ),
 
                     if (_erroGeral != null) ...[

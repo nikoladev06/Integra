@@ -7,6 +7,7 @@ import 'package:integra/core/providers.dart';
 import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/features/auth/presentation/sessao_controller.dart';
 import 'package:integra/features/profile/domain/password_change_validator.dart';
+import 'package:integra/shared/widgets/campo_de_senha.dart';
 
 /// Troca de senha do usuário autenticado — `PUT /auth/password`.
 ///
@@ -106,23 +107,32 @@ class _TrocarSenhaScreenState extends ConsumerState<TrocarSenhaScreen> {
                   ),
                   const SizedBox(height: Espaco.lg),
 
-                  ShadInput(
-                    controller: _atual,
-                    placeholder: const Text('Senha atual'),
-                    obscureText: true,
+                  CampoDeSenha(
+                    construir: (oculta, olho) => ShadInput(
+                      controller: _atual,
+                      placeholder: const Text('Senha atual'),
+                      obscureText: oculta,
+                      trailing: olho,
+                    ),
                   ),
                   const SizedBox(height: Espaco.md),
-                  ShadInput(
-                    controller: _nova,
-                    placeholder: const Text('Nova senha'),
-                    obscureText: true,
+                  CampoDeSenha(
+                    construir: (oculta, olho) => ShadInput(
+                      controller: _nova,
+                      placeholder: const Text('Nova senha'),
+                      obscureText: oculta,
+                      trailing: olho,
+                    ),
                   ),
                   const SizedBox(height: Espaco.md),
-                  ShadInput(
-                    controller: _confirmacao,
-                    placeholder: const Text('Confirme a nova senha'),
-                    obscureText: true,
-                    onSubmitted: (_) => _enviar(),
+                  CampoDeSenha(
+                    construir: (oculta, olho) => ShadInput(
+                      controller: _confirmacao,
+                      placeholder: const Text('Confirme a nova senha'),
+                      obscureText: oculta,
+                      trailing: olho,
+                      onSubmitted: (_) => _enviar(),
+                    ),
                   ),
 
                   if (_erros.isNotEmpty) ...[

@@ -9,6 +9,7 @@ import 'package:integra/core/router/app_router.dart';
 import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/features/auth/domain/auth_validators.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
+import 'package:integra/shared/widgets/campo_de_senha.dart';
 
 /// Cadastro de faculdade ou empresa — `POST /auth/register/instituicao`.
 ///
@@ -193,24 +194,30 @@ class _CadastroInstituicaoScreenState
                     ),
                     const SizedBox(height: Espaco.md),
 
-                    ShadInputFormField(
-                      id: 'senha',
-                      label: const Text('Senha'),
-                      placeholder: const Text('Pelo menos 6 caracteres'),
-                      obscureText: true,
-                      textInputAction: TextInputAction.next,
-                      validator: validarSenha,
+                    CampoDeSenha(
+                      construir: (oculta, olho) => ShadInputFormField(
+                        id: 'senha',
+                        label: const Text('Senha'),
+                        placeholder: const Text('Pelo menos 6 caracteres'),
+                        obscureText: oculta,
+                        trailing: olho,
+                        textInputAction: TextInputAction.next,
+                        validator: validarSenha,
+                      ),
                     ),
                     const SizedBox(height: Espaco.md),
 
-                    ShadInputFormField(
-                      id: 'confirmacao',
-                      label: const Text('Confirme a senha'),
-                      obscureText: true,
-                      textInputAction: TextInputAction.done,
-                      validator: (valor) => validarConfirmacaoSenha(
-                        _formulario.currentState?.value['senha'] as String?,
-                        valor,
+                    CampoDeSenha(
+                      construir: (oculta, olho) => ShadInputFormField(
+                        id: 'confirmacao',
+                        label: const Text('Confirme a senha'),
+                        obscureText: oculta,
+                        trailing: olho,
+                        textInputAction: TextInputAction.done,
+                        validator: (valor) => validarConfirmacaoSenha(
+                          _formulario.currentState?.value['senha'] as String?,
+                          valor,
+                        ),
                       ),
                     ),
 
