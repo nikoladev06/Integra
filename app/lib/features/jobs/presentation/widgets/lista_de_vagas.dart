@@ -14,12 +14,16 @@ import 'package:integra/features/jobs/presentation/widgets/vaga_card.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
 import 'package:integra/shared/widgets/estado_vazio.dart';
 
-/// A aba de vagas: a barra de filtro e a lista.
+/// A aba de vagas: só a lista.
 ///
 /// Um sliver, e não uma tela: ela vive dentro do [CustomScrollView] do pilar
-/// Profissional, junto do cabeçalho retrátil e da barra de abas. Como
-/// [SliverMainAxisGroup], ela pode conter os dois slivers — filtro e lista — sem
-/// virar um segundo eixo de rolagem.
+/// Profissional, junto do cabeçalho retrátil e da barra de abas.
+///
+/// **O filtro saiu daqui** e virou o `BotaoDeFiltroDeVagas`, no canto esquerdo do
+/// cabeçalho — o mesmo lugar do botão de escopo nas duas telas de feed. Ele ficava
+/// numa faixa logo abaixo das abas, que custava até duas linhas permanentes da tela
+/// quando os quatro controles da empresa não caíam numa. Com ele fora, esta aba é um
+/// sliver só, e não um [SliverMainAxisGroup].
 class ListaDeVagas extends ConsumerWidget {
   const ListaDeVagas({super.key});
 
@@ -27,223 +31,23 @@ class ListaDeVagas extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final vagas = ref.watch(vagasProvider);
 
-    return SliverMainAxisGroup(
-      slivers: [
-        const SliverToBoxAdapter(child: _BarraDeFiltro()),
-        switch (vagas) {
-          AsyncError(:final error) => _Centrado(
-            child: _Erro(
-              mensagem: error is Failure
-                  ? error.mensagem
-                  : 'Não foi possível carregar as vagas.',
-              aoTentarDeNovo: () => ref.invalidate(vagasProvider),
-            ),
-          ),
-          AsyncLoading() => const _Centrado(
-            child: Center(child: CircularProgressIndicator()),
-          ),
-          AsyncData(:final value) when value.itens.isEmpty => const _Centrado(
-            child: _Vazio(),
-          ),
-          AsyncData(:final value) => _Lista(estado: value),
-        },
-      ],
-    );
-  }
-}
-
-/// O filtro em vigor, sempre visível, com o que está ativo escrito.
-///
-/// Uma linha de etiquetas em vez de um ícone como o do escopo do feed, e a razão é a
-/// diferença entre os dois controles: o escopo tem três opções mutuamente exclusivas
-/// e caberia num tooltip; o filtro de vagas combina tipo, modalidade e estado, e uma
-/// combinação não cabe numa frase de hover. Escrever o que está ativo é o que impede
-/// alguém de ler uma lista filtrada como uma lista vazia.
-class _BarraDeFiltro extends ConsumerWidget {
-  const _BarraDeFiltro();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tema = ShadTheme.of(context);
-    final cores = tema.colorScheme;
-    final filtro = ref.watch(filtroDeVagasProvider);
-    final notifier = ref.read(filtroDeVagasProvider.notifier);
-    final perfil = ref.watch(perfilAtualProvider);
-    final ehEmpresa = perfil?.tipo == TipoConta.empresa;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        Espaco.md,
-        Espaco.sm,
-        Espaco.md,
-        Espaco.xs,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Wrap(
-              spacing: Espaco.xs,
-              runSpacing: Espaco.xs,
-              children: [
-                _Chip<TipoDeVaga>(
-                  rotulo: 'Tipo',
-                  valor: filtro.tipo,
-                  opcoes: TipoDeVaga.values,
-                  nome: (t) => t.rotulo,
-                  aoTrocar: (t) => notifier.trocar(
-                    FiltroDeVagas(
-                      tipo: t,
-                      modalidade: filtro.modalidade,
-                      empresaId: filtro.empresaId,
-                      estado: filtro.estado,
-                    ),
-                  ),
-                ),
-                _Chip<Modalidade>(
-                  rotulo: 'Modalidade',
-                  valor: filtro.modalidade,
-                  opcoes: Modalidade.values,
-                  nome: (m) => m.rotulo,
-                  aoTrocar: (m) => notifier.trocar(
-                    FiltroDeVagas(
-                      tipo: filtro.tipo,
-                      modalidade: m,
-                      empresaId: filtro.empresaId,
-                      estado: filtro.estado,
-                    ),
-                  ),
-                ),
-                // Só a empresa tem estas duas: "minhas vagas" e "encerradas" são as
-                // perguntas de quem publica. Para o aluno, uma vaga encerrada é um
-                // beco — ele não pode se candidatar —, e a dele em "minhas
-                // candidaturas" já mostra o estado da vaga.
-                if (ehEmpresa) ...[
-                  _Alternar(
-                    rotulo: 'Minhas vagas',
-                    ativo: filtro.empresaId != null,
-                    aoTrocar: (ativo) => notifier.trocar(
-                      FiltroDeVagas(
-                        tipo: filtro.tipo,
-                        modalidade: filtro.modalidade,
-                        empresaId: ativo ? perfil!.id : null,
-                        estado: filtro.estado,
-                      ),
-                    ),
-                  ),
-                  _Alternar(
-                    rotulo: 'Encerradas',
-                    ativo: filtro.estado == EstadoDaVaga.fechada,
-                    aoTrocar: (ativo) => notifier.trocar(
-                      FiltroDeVagas(
-                        tipo: filtro.tipo,
-                        modalidade: filtro.modalidade,
-                        empresaId: filtro.empresaId,
-                        estado: ativo
-                            ? EstadoDaVaga.fechada
-                            : EstadoDaVaga.aberta,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (filtro.ativo)
-            Tooltip(
-              message: 'Limpar filtros',
-              child: ShadIconButton.ghost(
-                icon: Icon(LucideIcons.x, size: 16, color: cores.profissional),
-                onPressed: notifier.limpar,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Um filtro de valor único, com "Todos" como primeira opção.
-///
-/// "Todos" existe na lista em vez de exigir o botão de limpar: desfazer uma escolha
-/// tem que estar no mesmo lugar onde ela foi feita, senão o usuário procura o
-/// contrário do que acabou de tocar.
-class _Chip<T> extends StatelessWidget {
-  const _Chip({
-    required this.rotulo,
-    required this.valor,
-    required this.opcoes,
-    required this.nome,
-    required this.aoTrocar,
-  });
-
-  final String rotulo;
-  final T? valor;
-  final List<T> opcoes;
-  final String Function(T) nome;
-  final ValueChanged<T?> aoTrocar;
-
-  @override
-  Widget build(BuildContext context) {
-    final cores = ShadTheme.of(context).colorScheme;
-    final ativo = valor != null;
-
-    return MenuAnchor(
-      builder: (context, controlador, _) => ShadButton.outline(
-        size: ShadButtonSize.sm,
-        onPressed: () =>
-            controlador.isOpen ? controlador.close() : controlador.open(),
-        trailing: Icon(
-          LucideIcons.chevronDown,
-          size: 14,
-          color: ativo ? cores.profissional : cores.mutedForeground,
+    return switch (vagas) {
+      AsyncError(:final error) => _Centrado(
+        child: _Erro(
+          mensagem: error is Failure
+              ? error.mensagem
+              : 'Não foi possível carregar as vagas.',
+          aoTentarDeNovo: () => ref.invalidate(vagasProvider),
         ),
-        child: Text(ativo ? nome(valor as T) : rotulo),
       ),
-      menuChildren: [
-        MenuItemButton(
-          onPressed: () => aoTrocar(null),
-          child: Text('Todos · $rotulo'),
-        ),
-        for (final opcao in opcoes)
-          MenuItemButton(
-            leadingIcon: Icon(
-              LucideIcons.check,
-              size: 14,
-              color: opcao == valor ? cores.profissional : Colors.transparent,
-            ),
-            onPressed: () => aoTrocar(opcao),
-            child: Text(nome(opcao)),
-          ),
-      ],
-    );
-  }
-}
-
-class _Alternar extends StatelessWidget {
-  const _Alternar({
-    required this.rotulo,
-    required this.ativo,
-    required this.aoTrocar,
-  });
-
-  final String rotulo;
-  final bool ativo;
-  final ValueChanged<bool> aoTrocar;
-
-  @override
-  Widget build(BuildContext context) {
-    final cores = ShadTheme.of(context).colorScheme;
-
-    return ShadButton.outline(
-      size: ShadButtonSize.sm,
-      onPressed: () => aoTrocar(!ativo),
-      leading: Icon(
-        ativo ? LucideIcons.checkCheck : LucideIcons.circle,
-        size: 14,
-        color: ativo ? cores.profissional : cores.mutedForeground,
+      AsyncLoading() => const _Centrado(
+        child: Center(child: CircularProgressIndicator()),
       ),
-      child: Text(rotulo),
-    );
+      AsyncData(:final value) when value.itens.isEmpty => const _Centrado(
+        child: _Vazio(),
+      ),
+      AsyncData(:final value) => _Lista(estado: value),
+    };
   }
 }
 
@@ -266,14 +70,8 @@ class _Lista extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final notifier = ref.read(vagasProvider.notifier);
 
-    return SliverPadding
-      (
-      padding: const EdgeInsets.fromLTRB(
-        Espaco.md,
-        Espaco.xs,
-        Espaco.md,
-        Espaco.md,
-      ),
+    return SliverPadding(
+      padding: const EdgeInsets.all(Espaco.md),
       sliver: SliverList.builder(
         itemCount: estado.itens.length + (estado.temMais ? 1 : 0),
         itemBuilder: (context, indice) {

@@ -202,6 +202,10 @@ class _LinhaDePerfil extends StatelessWidget {
             : '@${perfil.username} · ${vinculo.universidade.sigla}',
         style: tema.textTheme.muted,
       ),
+      // A linha da universidade já levava ao perfil dela; esta não levava a lugar
+      // nenhum — a busca achava a pessoa e parava ali, o que faz a lista parecer um
+      // resultado e não um caminho.
+      onTap: () => context.push(Rotas.usuario(perfil.id)),
     );
   }
 }

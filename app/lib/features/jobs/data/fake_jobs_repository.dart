@@ -99,6 +99,25 @@ class FakeJobsRepository implements JobsRepository {
     await _esperar();
     final leitor = _banco.usuarioAtual;
 
+    // **Fechada é da empresa autora.** Mesma recusa do serviço, e aqui também antes
+    // de qualquer filtro: no perfil de uma empresa, aluno e faculdade veriam só becos.
+    if (filtro.estado == EstadoDaVaga.fechada &&
+        filtro.empresaId != leitor.id) {
+      throw const FalhaDePermissao(
+        'Só a empresa que publicou vê as vagas que encerrou',
+      );
+    }
+
+    // A área de vagas é das empresas que o leitor segue, mais ele mesmo. Nenhuma
+    // delas tendo vaga no estado pedido, a lista cai nas recomendadas — todas —,
+    // como o feed faz com os posts de quem não segue ninguém.
+    final seguidas = _banco.autoresSeguidos(leitor.id);
+    final restringir =
+        filtro.empresaId == null &&
+        _banco.vagas.any(
+          (v) => v.estado == filtro.estado && seguidas.contains(v.empresaId),
+        );
+
     final candidatas =
         _banco.vagas
             .where((v) => v.estado == filtro.estado)
@@ -111,6 +130,7 @@ class FakeJobsRepository implements JobsRepository {
             .where(
               (v) => filtro.empresaId == null || v.empresaId == filtro.empresaId,
             )
+            .where((v) => !restringir || seguidas.contains(v.empresaId))
             .toList()
           ..sort((a, b) => b.criadoEm.compareTo(a.criadoEm));
 
@@ -232,6 +252,25 @@ class FakeJobsRepository implements JobsRepository {
     vaga.editadoEm = DateTime.now();
 
     return _montar(vaga, empresa)!;
+  }
+
+  @override
+  Future<void> remover(String vagaId) async {
+    await _esperar();
+    final empresa = _banco.usuarioAtual;
+    final vaga = _exigirDaEmpresa(vagaId, empresa.id);
+
+    // Só depois de encerrar. Apagar uma vaga aberta tiraria do ar um processo em
+    // curso junto com as candidaturas de quem está esperando resposta.
+    if (vaga.estado == EstadoDaVaga.aberta) {
+      throw const FalhaDeConflito('Encerre a vaga antes de apagá-la');
+    }
+
+    // As candidaturas vão junto, como o `ON DELETE CASCADE` do banco: uma linha em
+    // "minhas candidaturas" apontando para uma vaga que não existe mais é pior que
+    // a ausência dela.
+    _banco.candidaturas.removeWhere((c) => c.vagaId == vagaId);
+    _banco.vagas.removeWhere((v) => v.id == vagaId);
   }
 
   /// A invariante do local, nos dois sentidos.

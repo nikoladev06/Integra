@@ -82,6 +82,56 @@ class _VagaScreenState extends ConsumerState<VagaScreen> {
     }
   }
 
+  /// Apaga a vaga encerrada, depois de confirmar. **Volta para a tela anterior.**
+  ///
+  /// A confirmação não é cerimônia: as candidaturas vão junto, e o aluno perde a
+  /// linha dele em "minhas candidaturas". O diálogo diz isso — "apagar" sem dizer o
+  /// que mais sai é o botão que se toca uma vez e se explica depois.
+  Future<void> _apagar(Vaga vaga) async {
+    final confirmado = await showShadDialog<bool>(
+      context: context,
+      builder: (contexto) => ShadDialog.alert(
+        title: const Text('Apagar esta vaga?'),
+        description: const Text(
+          'A vaga sai do seu perfil e as candidaturas recebidas vão com ela — '
+          'quem se candidatou deixa de ver este processo. Não há como desfazer.',
+        ),
+        actions: [
+          ShadButton.outline(
+            onPressed: () => Navigator.of(contexto).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          ShadButton.destructive(
+            onPressed: () => Navigator.of(contexto).pop(true),
+            child: const Text('Apagar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true) return;
+
+    setState(() => _ocupado = true);
+    try {
+      await ref.read(jobsRepositoryProvider).remover(vaga.id);
+
+      // As duas listas que mostravam a vaga: a área e a aba do perfil da empresa.
+      ref.invalidate(vagasProvider);
+      ref.invalidate(vagasDaEmpresaProvider);
+
+      if (!mounted) return;
+      // Sai da tela: ela mostra uma vaga que não existe mais, e recarregá-la daria
+      // 404 — o erro certo no lugar errado.
+      Navigator.of(context).pop();
+      ShadToaster.of(context).show(
+        const ShadToast(description: Text('Vaga apagada.')),
+      );
+    } on Failure catch (falha) {
+      _avisar(falha.mensagem, erro: true);
+    } finally {
+      if (mounted) setState(() => _ocupado = false);
+    }
+  }
+
   Future<void> _marcarVisualizada(String candidaturaId) async {
     try {
       await ref.read(jobsRepositoryProvider).marcarVisualizada(candidaturaId);
@@ -120,6 +170,17 @@ class _VagaScreenState extends ConsumerState<VagaScreen> {
                 MaterialPageRoute<void>(
                   builder: (_) => ComporVagaScreen(vaga: vaga.value),
                 ),
+              ),
+            ),
+          // Apagar só aparece na **encerrada** da própria empresa: com a vaga aberta
+          // o serviço responde 409, e oferecer uma ação que será recusada é pior que
+          // não oferecer. Encerrar é no formulário de edição, onde está o estado.
+          if ((vaga.value?.podeEditar ?? false) && !vaga.value!.aberta)
+            Tooltip(
+              message: 'Apagar vaga',
+              child: ShadIconButton.ghost(
+                icon: const Icon(LucideIcons.trash2, size: 18),
+                onPressed: _ocupado ? null : () => _apagar(vaga.value!),
               ),
             ),
         ],

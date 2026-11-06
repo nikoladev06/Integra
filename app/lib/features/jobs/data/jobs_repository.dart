@@ -1,6 +1,6 @@
 import 'package:integra/features/jobs/data/models/vaga.dart';
 
-/// Contrato da área de vagas, espelhando `contracts/jobs.openapi.yaml` v1.
+/// Contrato da área de vagas, espelhando `contracts/jobs.openapi.yaml` v2.
 ///
 /// Duas assimetrias atravessam a interface, e as duas são deliberadas:
 ///
@@ -9,15 +9,21 @@ import 'package:integra/features/jobs/data/models/vaga.dart';
 /// aparece em "minhas candidaturas". Editar, encerrar e ver candidaturas são da
 /// autora.
 ///
-/// **Não existe `remover`.** Encerrar é [editar] com [EstadoDaVaga.fechada]: as
-/// candidaturas recebidas continuam existindo, e os dois lados continuam vendo o
-/// histórico. Um `DELETE` que as levasse junto apagaria o histórico de todos para
-/// encerrar um processo que terminou normal — e é por isso que o método não está
-/// aqui, em vez de existir e ser evitado pelas telas.
+/// **[remover] não substitui encerrar.** Encerrar é [editar] com
+/// [EstadoDaVaga.fechada], e é o que preserva o histórico dos dois lados; apagar só
+/// é permitido **depois** disso, e é a empresa autora decidindo que não quer mais o
+/// registro velho à vista. Com a vaga aberta, o serviço responde 409.
 abstract interface class JobsRepository {
   // ──────────────────────────────  vagas  ──────────────────────────────
 
   /// `GET /jobs/vagas`. Abertas por padrão, da mais recente para a mais antiga.
+  ///
+  /// Sem [FiltroDeVagas.empresaId] é a **área de vagas**: só das empresas que o
+  /// leitor segue, e todas quando ele não segue nenhuma que tenha vaga — a mesma
+  /// recomendação que o feed faz com os posts.
+  ///
+  /// [EstadoDaVaga.fechada] é **da empresa autora**: pedi-lo sem `empresaId` próprio
+  /// responde 403.
   ///
   /// `candidaturaEnviada` vem preenchido em cada item, para o botão da lista já
   /// nascer no estado certo — sem ele a tela mostraria "candidatar-se" em vagas a
@@ -56,6 +62,12 @@ abstract interface class JobsRepository {
     String? local,
     EstadoDaVaga? estado,
   });
+
+  /// `DELETE /jobs/vagas/{id}`. Só a empresa autora, e **só vaga encerrada**.
+  ///
+  /// As candidaturas vão junto. Vaga aberta responde 409: encerrar existe para
+  /// terminar um processo sem apagar o histórico de quem está esperando resposta.
+  Future<void> remover(String vagaId);
 
   // ──────────────────────────  candidaturas  ──────────────────────────
 

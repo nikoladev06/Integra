@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -194,6 +195,34 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.widgetWithText(ShadButton, 'Entrar'), findsOne);
+    });
+
+    testWidgets('o olho do campo de senha revela e volta a ocultar', (
+      tester,
+    ) async {
+      await bombearApp(tester);
+      await tester.enterText(campo('Senha'), 'integra123');
+      await tester.pump();
+
+      bool oculta() => tester.widget<EditableText>(campo('Senha')).obscureText;
+
+      // Nasce oculta: o botão revela a pedido, e não o contrário.
+      expect(oculta(), isTrue);
+      expect(find.byTooltip('Mostrar senha'), findsOne);
+
+      await tester.tap(find.byTooltip('Mostrar senha'));
+      await tester.pumpAndSettle();
+
+      // O rótulo diz a **ação**, não o estado, então ele troca junto: um botão
+      // que continuasse dizendo "mostrar" com a senha à vista mentiria para
+      // quem o lê pelo leitor de tela.
+      expect(oculta(), isFalse);
+      expect(find.byTooltip('Ocultar senha'), findsOne);
+
+      await tester.tap(find.byTooltip('Ocultar senha'));
+      await tester.pumpAndSettle();
+
+      expect(oculta(), isTrue);
     });
   });
 }

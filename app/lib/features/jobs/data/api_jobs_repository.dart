@@ -80,6 +80,9 @@ class ApiJobsRepository implements JobsRepository {
     return Vaga.fromJson(await _api.patch('/jobs/vagas/$vagaId', corpo: corpo));
   }
 
+  @override
+  Future<void> remover(String vagaId) => _api.delete('/jobs/vagas/$vagaId');
+
   // ──────────────────────────  candidaturas  ──────────────────────────
 
   @override

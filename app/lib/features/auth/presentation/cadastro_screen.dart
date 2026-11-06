@@ -9,6 +9,7 @@ import 'package:integra/core/router/app_router.dart';
 import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/features/auth/domain/auth_validators.dart';
 import 'package:integra/features/institution/presentation/widgets/seletor_de_formacao.dart';
+import 'package:integra/shared/widgets/campo_de_senha.dart';
 
 /// Cadastro de aluno — `POST /auth/register`.
 ///
@@ -167,28 +168,34 @@ class _CadastroScreenState extends ConsumerState<CadastroScreen> {
                     ),
                     const SizedBox(height: Espaco.md),
 
-                    ShadInputFormField(
-                      id: 'senha',
-                      label: const Text('Senha'),
-                      placeholder: const Text('Pelo menos 6 caracteres'),
-                      obscureText: true,
-                      autofillHints: const [AutofillHints.newPassword],
-                      textInputAction: TextInputAction.next,
-                      validator: validarSenha,
+                    CampoDeSenha(
+                      construir: (oculta, olho) => ShadInputFormField(
+                        id: 'senha',
+                        label: const Text('Senha'),
+                        placeholder: const Text('Pelo menos 6 caracteres'),
+                        obscureText: oculta,
+                        trailing: olho,
+                        autofillHints: const [AutofillHints.newPassword],
+                        textInputAction: TextInputAction.next,
+                        validator: validarSenha,
+                      ),
                     ),
                     const SizedBox(height: Espaco.md),
 
-                    ShadInputFormField(
-                      id: 'confirmacao',
-                      label: const Text('Confirme a senha'),
-                      obscureText: true,
-                      textInputAction: TextInputAction.done,
-                      // Não vai no corpo da requisição: o contrato de
-                      // `/auth/register` não tem este campo. É conferência de
-                      // digitação, e o lugar dela é aqui.
-                      validator: (valor) => validarConfirmacaoSenha(
-                        _formulario.currentState?.value['senha'] as String?,
-                        valor,
+                    CampoDeSenha(
+                      construir: (oculta, olho) => ShadInputFormField(
+                        id: 'confirmacao',
+                        label: const Text('Confirme a senha'),
+                        obscureText: oculta,
+                        trailing: olho,
+                        textInputAction: TextInputAction.done,
+                        // Não vai no corpo da requisição: o contrato de
+                        // `/auth/register` não tem este campo. É conferência de
+                        // digitação, e o lugar dela é aqui.
+                        validator: (valor) => validarConfirmacaoSenha(
+                          _formulario.currentState?.value['senha'] as String?,
+                          valor,
+                        ),
                       ),
                     ),
                     const SizedBox(height: Espaco.lg),

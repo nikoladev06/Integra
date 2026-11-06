@@ -488,8 +488,7 @@ class _Foto extends StatelessWidget {
               ),
               const SizedBox(height: Espaco.xs),
               Text(
-                'JPEG, PNG ou WebP, até 5 MB. A foto é enviada direto ao '
-                'armazenamento — ela não passa pelo servidor do Integra.',
+                'JPEG, PNG ou WebP, até 5 MB.',
                 style: tema.textTheme.muted.copyWith(
                   color: cores.mutedForeground,
                 ),

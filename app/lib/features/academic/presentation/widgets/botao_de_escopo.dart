@@ -28,8 +28,21 @@ class BotaoDeEscopo<T> extends StatelessWidget {
     required this.aoTrocar,
     required this.cor,
     this.padrao,
+    this.titulo = 'Escopo do feed',
+    this.icone = LucideIcons.slidersHorizontal,
     super.key,
   });
+
+  /// O que o botão escolhe, para o tooltip. Padrão: o escopo do feed.
+  ///
+  /// Existe porque o perfil da instituição reusa este seletor para o **curso** da
+  /// aba de comunicados restritos, e um tooltip dizendo "escopo do feed" num botão
+  /// que filtra curso é a pior espécie de rótulo: o que ele afirma é falso.
+  final String titulo;
+
+  /// O ícone do botão. Diferente por significado, como no filtro de vagas: o mesmo
+  /// desenho querendo dizer duas coisas é como um controle deixa de ser confiável.
+  final IconData icone;
 
   final List<T> opcoes;
   final T selecionado;
@@ -57,10 +70,10 @@ class BotaoDeEscopo<T> extends StatelessWidget {
         // O rótulo diz o escopo **em vigor**, não só o nome do botão. Com o texto
         // fora da tela, é a única forma de o leitor de tela e o hover contarem que
         // o feed está filtrado.
-        message: 'Escopo do feed: ${rotulo(selecionado)}',
+        message: '$titulo: ${rotulo(selecionado)}',
         child: ShadIconButton.ghost(
           icon: Icon(
-            LucideIcons.slidersHorizontal,
+            icone,
             size: 20,
             // Fora do padrão, o ícone ganha a cor do pilar. É o que impede o
             // usuário de ler um feed filtrado como um feed vazio e concluir que

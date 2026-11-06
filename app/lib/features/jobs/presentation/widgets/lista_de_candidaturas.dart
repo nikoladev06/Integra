@@ -91,7 +91,16 @@ class CandidaturaCard extends StatelessWidget {
       child: ShadCard(
         padding: const EdgeInsets.all(Espaco.md),
         child: InkWell(
-          onTap: () => context.push(Rotas.vaga(vaga.id)),
+          // **O toque segue o assunto do card.** Na lista do aluno o assunto é a vaga,
+          // e é para ela que se vai. Na da empresa é a pessoa — ela abriu a vaga para
+          // chegar aqui, e voltar para a mesma vaga seria um toque que não leva a lugar
+          // nenhum. O perfil é público, e é onde está o currículo que a candidatura
+          // deliberadamente não traz.
+          onTap: () => context.push(
+            mostrarCandidato
+                ? Rotas.usuario(candidatura.candidato.id)
+                : Rotas.vaga(vaga.id),
+          ),
           borderRadius: BorderRadius.circular(6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

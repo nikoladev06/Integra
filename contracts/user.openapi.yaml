@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Integra — user-service
-  version: 2.2.0
+  version: 2.3.0
   description: |
     Perfil, formação, vínculo institucional e o grafo de seguidores.
 
@@ -306,6 +306,40 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Universidade' }
+
+  /universidades/me:
+    get:
+      tags: [instituições]
+      summary: Perfil da própria instituição
+      operationId: getMinhaUniversidade
+      description: |
+        A instituição da conta autenticada, no **mesmo corpo** de
+        `GET /universidades/{id}` — é a mesma tela, vista pela própria conta.
+
+        Existe porque o elo conta → universidade é uma coluna deste serviço: sem
+        ela, o app não teria como chegar ao id, e o perfil da própria instituição
+        ficaria vazio enquanto qualquer outra conta vê os comunicados dela pela
+        busca.
+
+        `temVinculo` e `seguindo` saem **falsos**: vínculo é de aluno, e ninguém
+        segue a si mesmo. Os dois decidem um menu que a própria conta não usa.
+
+        Conta pendente alcança: ela não publica nem matricula, mas lê o próprio
+        perfil. A recusa de agir mora nas rotas que agem.
+      responses:
+        '200':
+          description: Perfil da instituição
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PerfilDeUniversidade' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403':
+          description: |
+            A conta não é `faculdade`, ou não administra instituição nenhuma
+            (`sem_instituicao`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /universidades/{universidadeId}:
     get:

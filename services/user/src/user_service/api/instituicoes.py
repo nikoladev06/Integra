@@ -123,6 +123,34 @@ async def listar_universidades(sessao: SessaoDep, q: str | None = None) -> list[
     return [UniversidadeOut.model_validate(u) for u in encontradas]
 
 
+@router.get("/universidades/me", response_model=PerfilDeUniversidadeOut)
+async def minha_universidade(sessao: SessaoDep, conta: FaculdadeDep) -> PerfilDeUniversidadeOut:
+    """A instituição da conta autenticada — **o perfil dela como ela própria o vê**.
+
+    Existe porque o app não tinha como chegar ao id: a conta `faculdade` administra
+    uma universidade, e esse elo é uma coluna deste serviço. Sem esta rota, o perfil
+    da própria instituição ficava vazio no app enquanto qualquer outra conta via os
+    comunicados dela pela busca.
+
+    Mesmo corpo de `GET /universidades/{id}`, e é o ponto: é a mesma tela. `temVinculo`
+    e `seguindo` saem falsos porque vínculo é de aluno e ninguém segue a si mesmo — e
+    os dois decidem um menu que a própria conta não usa.
+
+    Conta pendente alcança: ela não publica nem matricula, mas lê o próprio perfil. A
+    recusa de agir mora nas rotas que agem (`FaculdadeAtivaDep`), não na de ler.
+    """
+    universidade = await instituicoes.universidade_da_conta(sessao, conta.id)
+    return PerfilDeUniversidadeOut(
+        id=universidade.id,
+        nome=universidade.nome,
+        sigla=universidade.sigla,
+        bio=universidade.bio,
+        foto_url=universidade.foto_url,
+        tem_vinculo=False,
+        seguindo=False,
+    )
+
+
 @router.get("/universidades/me/cursos", response_model=list[CursoOut])
 async def meus_cursos(sessao: SessaoDep, conta: FaculdadeDep) -> list[CursoOut]:
     universidade = await instituicoes.universidade_da_conta(sessao, conta.id)

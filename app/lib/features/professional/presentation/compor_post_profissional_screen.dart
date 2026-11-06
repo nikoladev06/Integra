@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'package:integra/core/error/failure.dart';
 import 'package:integra/core/providers.dart';
+import 'package:integra/core/router/app_router.dart';
 import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/features/professional/presentation/profissional_providers.dart';
 import 'package:integra/shared/domain/seletor_de_imagem.dart';
@@ -103,14 +105,25 @@ class _ComporPostProfissionalScreenState
       // ramo "seguindo" do conjunto — então ele aparece na primeira página.
       ref.invalidate(feedProfissionalProvider);
 
+      // A aba do pilar onde o post acabou de nascer. Publicar pelo hub do rodapé
+      // deixava o usuário de volta no hub, olhando a lista de opções em vez do post.
+      ref.read(abaDoProfissionalProvider.notifier).trocar(AbaDoProfissional.feed);
+
       if (!mounted) return;
-      // Fecha e confirma por toast, não por alerta no corpo: a confirmação vem quando
-      // a tela fecha, e um alerta no corpo de uma tela que fecha nunca é lido. Foi o
-      // defeito que a Sprint 4 encontrou em salvar o perfil.
-      Navigator.of(context).pop();
-      ShadToaster.of(context).show(
-        const ShadToast(description: Text('Post publicado.')),
-      );
+      // **Vai para o feed, em vez de voltar uma tela.** `go` troca a pilha pelo
+      // shell: o formulário e o hub que o abriu saem juntos, e o destino é o mesmo
+      // seja o caminho o lápis do feed ou o botão do rodapé — que era o pedido.
+      //
+      // Confirma por toast, e não por alerta no corpo: um alerta no corpo de uma
+      // tela que fecha nunca é lido. Foi o defeito que a Sprint 4 encontrou em
+      // salvar o perfil.
+      //
+      // O toaster é lido **antes** de navegar: ele vive acima do roteador e
+      // sobrevive à troca, mas o `context` desta tela não — pedi-lo depois seria
+      // procurar um ancestral por um widget que acabou de sair da árvore.
+      final toaster = ShadToaster.of(context);
+      context.go(Rotas.profissional);
+      toaster.show(const ShadToast(description: Text('Post publicado.')));
     } on FalhaDeValidacao catch (falha) {
       // O erro de campo fica **no corpo**, e não em toast: o oposto da confirmação,
       // porque precisa ficar à vista enquanto se corrige.

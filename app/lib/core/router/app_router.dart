@@ -58,6 +58,12 @@ abstract final class Rotas {
   static const busca = '/busca';
   static const universidades = '/universidades';
 
+  /// O perfil público de uma pessoa ou empresa. Reusa a [PerfilScreen] com
+  /// `userId`, em vez de uma tela própria: as duas mostram as mesmas abas do mesmo
+  /// jeito, e a diferença — menu da conta de um lado, botão de seguir do outro —
+  /// cabe em dois `if`. Duas telas divergiriam na primeira aba nova.
+  static const usuarios = '/usuarios';
+
   /// Mensagens diretas. **Ainda não existem** — a tela diz isso, e a rota existe
   /// para o botão do cabeçalho não precisar mudar de lugar quando o serviço entrar.
   static const mensagens = '/mensagens';
@@ -74,6 +80,8 @@ abstract final class Rotas {
   static String vaga(String id) => '$vagas/$id';
 
   static String universidade(String id) => '$universidades/$id';
+
+  static String usuario(String id) => '$usuarios/$id';
 
   /// As telas alcançáveis **sem** sessão. Fora desta lista, tudo exige login.
   ///
@@ -115,6 +123,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       final destino = estadoDaRota.matchedLocation;
       final aberta = Rotas.semSessao.contains(destino);
 
+      // **Empresa não tem pilar Acadêmico.** Ela não tem vínculo com nenhuma
+      // instituição, então não há comunicado dirigido a ela — e o rodapé dela nem
+      // mostra a aba. A guarda fica aqui, e não só no rodapé: sem ela, a conta
+      // abriria o app no ramo 0 e veria um feed que não é dela antes de tocar em
+      // nada, e qualquer link para `/academico` continuaria funcionando.
+      if (sessao is SessaoAtiva &&
+          sessao.perfil.tipo == TipoConta.empresa &&
+          destino.startsWith(Rotas.academico)) {
+        return Rotas.profissional;
+      }
+
       return switch (sessao) {
         // Ainda checando o token guardado: segura na tela de carregamento para
         // o login não piscar antes de entrar.
@@ -125,8 +144,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         SessaoAusente() => aberta ? null : Rotas.login,
 
         // Com sessão: login, cadastro e carregamento não fazem mais sentido.
-        SessaoAtiva() =>
-          aberta || destino == Rotas.carregando ? Rotas.academico : null,
+        SessaoAtiva(:final perfil) => aberta || destino == Rotas.carregando
+            ? (perfil.tipo == TipoConta.empresa
+                  ? Rotas.profissional
+                  : Rotas.academico)
+            : null,
       };
     },
 
@@ -187,6 +209,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '${Rotas.posts}/:id',
         builder: (_, estado) =>
             PostScreen(postId: estado.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '${Rotas.usuarios}/:id',
+        builder: (_, estado) =>
+            PerfilScreen(userId: estado.pathParameters['id']),
       ),
       GoRoute(
         path: '${Rotas.universidades}/:id',

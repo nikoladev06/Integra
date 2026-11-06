@@ -115,6 +115,10 @@ class ApiProfileRepository implements ProfileRepository {
   );
 
   @override
+  Future<PerfilDeUniversidade> minhaUniversidade() async =>
+      PerfilDeUniversidade.fromJson(await _api.get('/universidades/me'));
+
+  @override
   Future<ResultadoDeBusca> buscar(String termo) async =>
       ResultadoDeBusca.fromJson(await _api.get('/busca', query: {'q': termo}));
 
@@ -156,6 +160,20 @@ class ApiProfileRepository implements ProfileRepository {
     // `PUT` e `DELETE` em vez de um `POST /seguir` com corpo booleano: seguir é
     // idempotente, e o método HTTP já diz isso sem o servidor ter que ler o
     // corpo para saber o que fazer.
+    return seguir ? _api.put(caminho) : _api.delete(caminho);
+  }
+
+  @override
+  Future<List<Perfil>> usuariosSeguidos() async {
+    final itens = await _api.getLista('/users/me/seguindo/usuarios');
+    return itens
+        .map((e) => Perfil.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<void> seguirUsuario(String userId, {required bool seguir}) {
+    final caminho = '/users/me/seguindo/usuarios/$userId';
     return seguir ? _api.put(caminho) : _api.delete(caminho);
   }
 

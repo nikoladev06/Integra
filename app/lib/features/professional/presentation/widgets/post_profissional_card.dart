@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import 'package:go_router/go_router.dart';
+
 import 'package:integra/core/error/failure.dart';
 import 'package:integra/core/providers.dart';
+import 'package:integra/core/router/app_router.dart';
 import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/core/theme/tokens.dart';
 import 'package:integra/features/professional/data/models/post_profissional.dart';
@@ -180,6 +183,12 @@ class _PostProfissionalCardState extends ConsumerState<PostProfissionalCard> {
   }
 }
 
+/// O autor, a data, e o botão de apagar.
+///
+/// **O bloco do autor é tocável**, e leva ao perfil público dele — pessoa ou empresa.
+/// Um [GestureDetector] e não um [InkWell]: o card inteiro já é um `InkWell` que abre
+/// o post, e dois deles aninhados desenham dois respingos de toque sobrepostos. Aqui
+/// basta interceptar o gesto antes que ele suba para o pai.
 class _Cabecalho extends StatelessWidget {
   const _Cabecalho({required this.post, this.aoApagar});
 
@@ -195,35 +204,58 @@ class _Cabecalho extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: cores.profissional.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          alignment: Alignment.center,
-          // O ícone distingue empresa de pessoa antes de a linha de texto ser lida.
-          // É a mesma informação que o escopo filtra, e é o que dá sentido a filtrar.
-          child: Icon(
-            empresa ? LucideIcons.building2 : LucideIcons.user,
-            size: 18,
-            color: cores.profissional,
-          ),
-        ),
-        const SizedBox(width: Espaco.sm),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(post.autor.nomeCompleto, style: tema.textTheme.small),
-              Text(
-                post.editado
-                    ? '@${post.autor.username} · ${quando(post.criadoEm)} · editado'
-                    : '@${post.autor.username} · ${quando(post.criadoEm)}',
-                style: tema.textTheme.muted,
+          child: Semantics(
+            button: true,
+            // Sem `excludeSemantics`: o nome e a arroba são conteúdo, e não só o
+            // rótulo do botão — quem usa leitor de tela precisa dos dois.
+            label: 'Abrir o perfil de ${post.autor.nomeCompleto}',
+            child: GestureDetector(
+              onTap: () => context.push(Rotas.usuario(post.autor.id)),
+              // Sem isto o gesto só pega onde há pixel desenhado, e a faixa vazia à
+              // direita do nome abriria o post em vez do perfil.
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: cores.profissional.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    // O ícone distingue empresa de pessoa antes de a linha de texto
+                    // ser lida. É a mesma informação que o escopo filtra, e é o que
+                    // dá sentido a filtrar.
+                    child: Icon(
+                      empresa ? LucideIcons.building2 : LucideIcons.user,
+                      size: 18,
+                      color: cores.profissional,
+                    ),
+                  ),
+                  const SizedBox(width: Espaco.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          post.autor.nomeCompleto,
+                          style: tema.textTheme.small,
+                        ),
+                        Text(
+                          post.editado
+                              ? '@${post.autor.username} · ${quando(post.criadoEm)} · editado'
+                              : '@${post.autor.username} · ${quando(post.criadoEm)}',
+                          style: tema.textTheme.muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
         if (aoApagar != null)

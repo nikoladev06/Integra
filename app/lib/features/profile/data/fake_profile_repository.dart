@@ -312,6 +312,39 @@ class FakeProfileRepository implements ProfileRepository {
   }
 
   @override
+  Future<PerfilDeUniversidade> minhaUniversidade() async {
+    await _esperar();
+    final eu = _banco.usuarioAtual;
+
+    if (eu.tipo != TipoConta.faculdade) {
+      throw const FalhaDePermissao(
+        'Sua conta não tem permissão para esta ação',
+      );
+    }
+
+    // **Sem exigir ativação**, diferente de `_minhaInstituicao()`: ler o próprio
+    // perfil não é agir. A conta em análise entra, vê o que publicará e lê o aviso
+    // de análise; o que ela não faz — publicar, matricular — é recusado onde é feito.
+    final id = _banco.universidadeDaConta(eu.id);
+    final universidade = id == null ? null : _banco.universidadePorId(id);
+    if (universidade == null) {
+      throw const FalhaDePermissao(
+        'Esta conta não administra nenhuma instituição',
+      );
+    }
+
+    return PerfilDeUniversidade(
+      id: universidade.id,
+      nome: universidade.nome,
+      sigla: universidade.sigla,
+      // Vínculo é de aluno, e ninguém segue a si mesmo. Os dois decidem um menu que
+      // a própria conta não usa — ela tem o menu da conta no mesmo canto.
+      temVinculo: false,
+      seguindo: false,
+    );
+  }
+
+  @override
   Future<ResultadoDeBusca> buscar(String termo) async {
     await _esperar();
 
@@ -435,6 +468,44 @@ class FakeProfileRepository implements ProfileRepository {
       conjunto.add(universidadeId);
     } else {
       conjunto.remove(universidadeId);
+    }
+  }
+
+  @override
+  Future<List<Perfil>> usuariosSeguidos() async {
+    await _esperar();
+
+    final ids =
+        _banco.seguindoUsuarios[_banco.usuarioAtual.id] ?? const <String>{};
+
+    return [
+      for (final id in ids)
+        if (_banco.usuarios[id] case final encontrado?) _publico(encontrado),
+    ]..sort((a, b) => a.nomeCompleto.compareTo(b.nomeCompleto));
+  }
+
+  @override
+  Future<void> seguirUsuario(String userId, {required bool seguir}) async {
+    await _esperar();
+
+    if (!_banco.usuarios.containsKey(userId)) {
+      throw const FalhaNaoEncontrado('Usuário não encontrado');
+    }
+    if (userId == _banco.usuarioAtual.id) {
+      // O 409 do serviço. A tela não oferece o botão no próprio perfil, e por isso
+      // esta recusa nunca deveria aparecer — mas o falso que a omitisse deixaria a
+      // tela ser escrita sem saber que ela existe.
+      throw const FalhaDeConflito('Você não pode seguir a si mesmo');
+    }
+
+    final conjunto = _banco.seguindoUsuarios.putIfAbsent(
+      _banco.usuarioAtual.id,
+      () => <String>{},
+    );
+    if (seguir) {
+      conjunto.add(userId);
+    } else {
+      conjunto.remove(userId);
     }
   }
 

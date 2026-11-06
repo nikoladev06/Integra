@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'package:integra/core/error/failure.dart';
 import 'package:integra/core/providers.dart';
+import 'package:integra/core/router/app_router.dart';
 import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/features/academic/data/models/post.dart';
 import 'package:integra/features/academic/presentation/academic_providers.dart';
@@ -93,8 +95,21 @@ class _ComporPostScreenState extends ConsumerState<ComporPostScreen> {
       ref.invalidate(feedProvider);
 
       if (!mounted) return;
-      Navigator.of(context).pop(true);
-      ShadToaster.of(context).show(
+      final toaster = ShadToaster.of(context);
+
+      // **Publicar leva ao feed; editar volta de onde veio.** São dois caminhos
+      // diferentes: quem publicou quer ver o comunicado na lista, e quem editou
+      // chegou aqui a partir do post e espera voltar para ele — `pop(true)` é o que
+      // avisa a tela de detalhe para recarregar.
+      if (_editando) {
+        Navigator.of(context).pop(true);
+      } else {
+        // O toaster é lido antes: ele vive acima do roteador e sobrevive à troca de
+        // pilha, mas o `context` desta tela não.
+        context.go(Rotas.academico);
+      }
+
+      toaster.show(
         ShadToast(
           description: Text(
             _editando ? 'Comunicado atualizado.' : 'Comunicado publicado.',
