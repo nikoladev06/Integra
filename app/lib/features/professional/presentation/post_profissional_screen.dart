@@ -10,6 +10,7 @@ import 'package:integra/features/professional/presentation/profissional_provider
 import 'package:integra/features/professional/presentation/widgets/post_profissional_card.dart';
 import 'package:integra/shared/domain/tempo.dart';
 import 'package:integra/shared/widgets/estado_vazio.dart';
+import 'package:integra/shared/presentation/avatar_de_conta.dart';
 
 /// O detalhe de um post profissional, com os comentários.
 ///
@@ -198,15 +199,14 @@ class _Comentario extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: cores.muted,
-              shape: BoxShape.circle,
+          AvatarDeConta(
+            fotoUrl: comentario.autor.fotoUrl,
+            fundo: cores.muted,
+            diametro: 32,
+            semFoto: Text(
+              comentario.autor.iniciais,
+              style: tema.textTheme.muted,
             ),
-            alignment: Alignment.center,
-            child: Text(comentario.autor.iniciais, style: tema.textTheme.muted),
           ),
           const SizedBox(width: Espaco.sm),
           Expanded(

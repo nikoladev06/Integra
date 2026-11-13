@@ -14,6 +14,7 @@ import 'package:integra/features/profile/data/models/perfil.dart';
 import 'package:integra/shared/domain/seletor_de_imagem.dart';
 import 'package:integra/features/profile/presentation/widgets/formacoes_e_vinculo.dart';
 import 'package:integra/shared/domain/documentos.dart';
+import 'package:integra/shared/domain/imagens_locais.dart';
 
 /// Edição do próprio perfil — `PATCH /users/me` mais as rotas de formação.
 ///
@@ -467,8 +468,8 @@ class _Foto extends StatelessWidget {
             width: 64,
             height: 64,
             child: temFoto
-                ? Image.network(
-                    perfil.fotoUrl!,
+                ? Image(
+                    image: imagemDe(perfil.fotoUrl!),
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) => _Iniciais(perfil: perfil),
                   )

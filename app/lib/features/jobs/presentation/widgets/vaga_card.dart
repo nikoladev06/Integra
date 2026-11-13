@@ -5,6 +5,7 @@ import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/core/theme/tokens.dart';
 import 'package:integra/features/jobs/data/models/vaga.dart';
 import 'package:integra/shared/domain/tempo.dart';
+import 'package:integra/shared/presentation/avatar_de_conta.dart';
 
 /// O card de uma vaga na listagem.
 ///
@@ -40,15 +41,10 @@ class VagaCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: cores.profissional.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
+                  AvatarDeConta(
+                    fotoUrl: vaga.empresa.fotoUrl,
+                    fundo: cores.profissional.withValues(alpha: 0.12),
+                    semFoto: Icon(
                       LucideIcons.building2,
                       size: 18,
                       color: cores.profissional,

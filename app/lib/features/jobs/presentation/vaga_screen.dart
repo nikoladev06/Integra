@@ -231,7 +231,7 @@ class _Corpo extends StatelessWidget {
         Text(vaga.titulo, style: tema.textTheme.h3),
         const SizedBox(height: Espaco.xs),
         Text(
-          '${vaga.empresa.nome} · @${vaga.empresa.username} · '
+          '${vaga.empresa.nome} · '
           '${quando(vaga.criadoEm)}${vaga.editada ? ' · editada' : ''}',
           style: tema.textTheme.muted,
         ),

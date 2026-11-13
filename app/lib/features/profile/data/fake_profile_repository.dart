@@ -7,6 +7,7 @@ import 'package:integra/features/profile/data/models/instituicao.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
 import 'package:integra/features/profile/data/profile_repository.dart';
 import 'package:integra/shared/domain/documentos.dart';
+import 'package:integra/shared/domain/imagens_locais.dart';
 
 /// [ProfileRepository] em memória, sobre o [BancoFalso].
 ///
@@ -777,11 +778,11 @@ class FakeProfileRepository implements ProfileRepository {
     Uint8List bytes, {
     required String contentType,
   }) async {
-    // Nao ha storage no modo de fixtures. Responder sucesso e o certo: a tela
-    // continua o fluxo e grava a `fotoUrl` no perfil, entao a troca de foto e
-    // demonstravel sem MinIO — e o avatar mostra imagem quebrada, que e honesto,
-    // porque o arquivo realmente nao foi a lugar nenhum.
+    // Nao ha storage no modo de fixtures, e por isso os bytes ficam em memoria sob a
+    // `urlFinal` que acabou de ser emitida: e o que faz a foto escolhida aparecer no
+    // perfil sem MinIO. Ver `imagensLocais`.
     await _esperar();
+    imagensLocais[destino.urlFinal] = bytes;
   }
 
   static const _tamanhoMaximoDeImagem = 5 * 1024 * 1024;

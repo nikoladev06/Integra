@@ -9,6 +9,7 @@ import 'package:integra/features/academic/data/models/post.dart';
 import 'package:integra/features/academic/presentation/academic_providers.dart';
 import 'package:integra/features/academic/presentation/compor_post_screen.dart';
 import 'package:integra/features/academic/presentation/widgets/post_card.dart';
+import 'package:integra/shared/presentation/avatar_de_conta.dart';
 
 /// Um comunicado e a conversa embaixo dele.
 ///
@@ -174,30 +175,21 @@ class _Comentario extends ConsumerWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ShadAvatar(
-            comentario.autor.fotoUrl ?? '',
-            placeholder: Text(comentario.autor.iniciais),
-            size: const Size.square(32),
+          AvatarDeConta(
+            fotoUrl: comentario.autor.fotoUrl,
+            fundo: cores.muted,
+            diametro: 32,
+            semFoto: Text(comentario.autor.iniciais),
           ),
           const SizedBox(width: Espaco.sm),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        comentario.autor.nomeCompleto,
-                        style: tema.textTheme.small,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Text(
-                      '@${comentario.autor.username}',
-                      style: tema.textTheme.muted,
-                    ),
-                  ],
+                Text(
+                  comentario.autor.nomeCompleto,
+                  style: tema.textTheme.small,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 Text(comentario.conteudo, style: tema.textTheme.p),
               ],

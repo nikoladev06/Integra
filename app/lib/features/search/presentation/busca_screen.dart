@@ -12,6 +12,7 @@ import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/core/theme/tokens.dart';
 import 'package:integra/features/profile/data/models/instituicao.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
+import 'package:integra/shared/presentation/avatar_de_conta.dart';
 
 /// `GET /busca` — uma consulta, resultados agrupados por tipo.
 ///
@@ -189,9 +190,11 @@ class _LinhaDePerfil extends StatelessWidget {
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(
-        backgroundColor: cores.muted,
-        child: Text(perfil.iniciais, style: tema.textTheme.muted),
+      leading: AvatarDeConta(
+        fotoUrl: perfil.fotoUrl,
+        fundo: cores.muted,
+        diametro: 40,
+        semFoto: Text(perfil.iniciais, style: tema.textTheme.muted),
       ),
       title: Text(perfil.nomeCompleto, style: tema.textTheme.small),
       subtitle: Text(

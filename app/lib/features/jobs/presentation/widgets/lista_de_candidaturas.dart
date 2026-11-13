@@ -11,6 +11,7 @@ import 'package:integra/features/jobs/data/models/vaga.dart';
 import 'package:integra/features/jobs/presentation/jobs_providers.dart';
 import 'package:integra/shared/domain/tempo.dart';
 import 'package:integra/shared/widgets/estado_vazio.dart';
+import 'package:integra/shared/presentation/avatar_de_conta.dart';
 
 /// A aba "minhas candidaturas" do aluno.
 ///
@@ -108,15 +109,12 @@ class CandidaturaCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: cores.profissional.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
+                  AvatarDeConta(
+                    fotoUrl: mostrarCandidato
+                        ? candidatura.candidato.fotoUrl
+                        : vaga.empresa.fotoUrl,
+                    fundo: cores.profissional.withValues(alpha: 0.12),
+                    semFoto: Icon(
                       mostrarCandidato
                           ? LucideIcons.user
                           : LucideIcons.building2,
