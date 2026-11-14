@@ -11,6 +11,8 @@ import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/core/theme/tokens.dart';
 import 'package:integra/features/professional/data/models/post_profissional.dart';
 import 'package:integra/shared/domain/tempo.dart';
+import 'package:integra/shared/domain/imagens_locais.dart';
+import 'package:integra/shared/presentation/avatar_de_conta.dart';
 
 /// O card de um post profissional.
 ///
@@ -207,8 +209,8 @@ class _Cabecalho extends StatelessWidget {
         Expanded(
           child: Semantics(
             button: true,
-            // Sem `excludeSemantics`: o nome e a arroba são conteúdo, e não só o
-            // rótulo do botão — quem usa leitor de tela precisa dos dois.
+            // Sem `excludeSemantics`: o nome é conteúdo, e não só o rótulo do
+            // botão — quem usa leitor de tela precisa dele.
             label: 'Abrir o perfil de ${post.autor.nomeCompleto}',
             child: GestureDetector(
               onTap: () => context.push(Rotas.usuario(post.autor.id)),
@@ -218,18 +220,13 @@ class _Cabecalho extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: cores.profissional.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    // O ícone distingue empresa de pessoa antes de a linha de texto
-                    // ser lida. É a mesma informação que o escopo filtra, e é o que
-                    // dá sentido a filtrar.
-                    child: Icon(
+                  AvatarDeConta(
+                    fotoUrl: post.autor.fotoUrl,
+                    fundo: cores.profissional.withValues(alpha: 0.12),
+                    // Sem foto, o ícone distingue empresa de pessoa antes de a linha
+                    // de texto ser lida. É a mesma informação que o escopo filtra, e
+                    // é o que dá sentido a filtrar.
+                    semFoto: Icon(
                       empresa ? LucideIcons.building2 : LucideIcons.user,
                       size: 18,
                       color: cores.profissional,
@@ -244,10 +241,13 @@ class _Cabecalho extends StatelessWidget {
                           post.autor.nomeCompleto,
                           style: tema.textTheme.small,
                         ),
+                        // Sem a arroba: o nome e a foto já dizem quem publicou, e
+                        // repetir o username em cada card gasta a linha com o que só
+                        // serve para buscar a conta.
                         Text(
                           post.editado
-                              ? '@${post.autor.username} · ${quando(post.criadoEm)} · editado'
-                              : '@${post.autor.username} · ${quando(post.criadoEm)}',
+                              ? '${quando(post.criadoEm)} · editado'
+                              : quando(post.criadoEm),
                           style: tema.textTheme.muted,
                         ),
                       ],
@@ -290,8 +290,8 @@ class _Imagem extends StatelessWidget {
       borderRadius: BorderRadius.circular(6),
       child: AspectRatio(
         aspectRatio: 16 / 9,
-        child: Image.network(
-          url,
+        child: Image(
+          image: imagemDe(url),
           fit: BoxFit.cover,
           errorBuilder: (_, _, _) => DecoratedBox(
             decoration: BoxDecoration(color: cores.muted),

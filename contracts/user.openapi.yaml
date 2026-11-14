@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Integra — user-service
-  version: 2.3.0
+  version: 2.4.0
   description: |
     Perfil, formação, vínculo institucional e o grafo de seguidores.
 
@@ -198,10 +198,11 @@ paths:
       description: |
         O fluxo por trás do item "inserir CPF" no menu do perfil da faculdade.
 
-        **Duas conferências, nesta ordem:**
+        **Três conferências, nesta ordem:**
 
         1. o CPF enviado é o **da própria conta**;
-        2. esse CPF consta nas matrículas que esta universidade cadastrou.
+        2. esse CPF consta nas matrículas que esta universidade cadastrou;
+        3. essa matrícula não venceu.
 
         A primeira é o que impede a escalada. O CPF não é segredo no Brasil —
         circula em vazamentos e cadastros de todo tipo — então conferir apenas
@@ -252,6 +253,19 @@ paths:
               example:
                 code: vinculo_recusado
                 message: 'Não encontramos esse CPF na lista desta instituição'
+        '409':
+          description: |
+            A matrícula existe mas o prazo do curso já passou. Mensagem própria,
+            e não a recusa genérica: só o CPF da própria conta chega a esta
+            conferência, então contar o motivo não revela nada sobre terceiros —
+            e a mensagem genérica mandaria o aluno procurar um erro de digitação
+            que não existe.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                code: matricula_vencida
+                message: 'O período do seu curso nesta instituição terminou. Sua formação continua verificada no seu perfil.'
         '422': { $ref: '#/components/responses/ValidationError' }
 
   /users/me/vinculo:
@@ -418,9 +432,19 @@ paths:
           application/json:
             schema:
               type: object
-              required: [nome]
+              required: [nome, duracaoSemestres]
               properties:
                 nome: { type: string, maxLength: 200 }
+                duracaoSemestres:
+                  type: integer
+                  minimum: 1
+                  maximum: 20
+                  description: |
+                    Obrigatório e sem padrão. É o prazo de toda matrícula neste
+                    curso, e um padrão daria à instituição que esqueceu o campo
+                    um prazo que ela não escolheu — com o sintoma aparecendo
+                    semestres depois, em alunos perdendo acesso fora de hora.
+                  examples: [6]
       responses:
         '201':
           description: Curso criado
@@ -818,6 +842,18 @@ components:
       properties:
         id: { type: string, format: uuid }
         nome: { type: string, examples: ['Análise e Desenvolvimento de Sistemas'] }
+        duracaoSemestres:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 20
+          description: |
+            Duração do curso em semestres, declarada pela instituição. É o que dá
+            prazo às matrículas nele: a contagem corre da data em que a
+            instituição cadastrou o CPF.
+
+            `null` nos cursos cadastrados antes desta regra — nesses a matrícula
+            não vence. Todo curso novo é obrigado a declarar.
+          examples: [6]
 
     Formacao:
       type: object
@@ -850,7 +886,11 @@ components:
     Matricula:
       type: object
       required: [id, cpf, curso, criadoEm, vinculada]
-      description: Um aluno na lista da instituição.
+      description: |
+        Um aluno na lista da instituição. **Tem prazo**: vale os semestres que o
+        curso declara, contados de `criadoEm`. Quando vence, a matrícula é
+        apagada e o vínculo vai com ela — o aluno volta a ver apenas os posts
+        públicos da instituição e **mantém a formação verificada** no currículo.
       properties:
         id: { type: string, format: uuid }
         cpf:
@@ -869,7 +909,23 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/PerfilPublico' }
             - { type: 'null' }
-        criadoEm: { type: string, format: date-time }
+        criadoEm:
+          type: string
+          format: date-time
+          description: |
+            Quando a instituição cadastrou o CPF. **É o início da contagem do
+            prazo**, e não a data do vínculo: quem demora para informar o CPF no
+            app chega com menos tempo, como na faculdade.
+        expiraEm:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            `criadoEm` mais a duração do curso, em meses de calendário. `null`
+            quando o curso não declara duração.
+
+            Vem calculado do servidor em vez de a tela somar: duas
+            implementações da mesma conta discordariam na borda, que é justamente
+            o dia em que o aluno perde o acesso.
 
     PerfilPublico:
       type: object

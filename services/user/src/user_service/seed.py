@@ -7,7 +7,9 @@ sobe, o `/health` responde 200, e só o primeiro cadastro revela que falta.
 Rodar:
     uv run --project .. python -m user_service.seed
 
-Idempotente: pode rodar quantas vezes quiser, em qualquer ambiente.
+Idempotente: pode rodar quantas vezes quiser, em qualquer ambiente. Também
+completa a **duração** dos cursos que ele mesmo criou antes de a duração existir —
+e só quando está nula, para não desfazer o que a instituição ajustou na tela.
 
 Os identificadores são **determinísticos** (UUIDv5 sobre o nome), então a FATEC
 tem o mesmo id na máquina de cada dev, na CI e na VM. Isso permite conferir um
@@ -53,36 +55,41 @@ def _id_de(*partes: str) -> UUID:
 
 # Instituições da região onde o projeto nasce. Acrescentar aqui é seguro: o seed
 # insere o que falta e não toca no que existe.
-CATALOGO: dict[tuple[str, str], list[str]] = {
+#
+# O número ao lado de cada curso é a **duração em semestres**, e é o que dá prazo
+# às matrículas nele: tecnólogo 6, bacharelado 8, engenharia 10 — a duração padrão
+# de cada modalidade no Brasil. São dados de partida, como o resto deste arquivo:
+# quem for operar a instituição de verdade declara a duração que pratica.
+CATALOGO: dict[tuple[str, str], list[tuple[str, int]]] = {
     (
         "Faculdade de Tecnologia de Ribeirão Preto",
         "FATEC RP",
     ): [
-        "Análise e Desenvolvimento de Sistemas",
-        "Gestão Empresarial",
-        "Gestão da Produção Industrial",
+        ("Análise e Desenvolvimento de Sistemas", 6),
+        ("Gestão Empresarial", 6),
+        ("Gestão da Produção Industrial", 6),
     ],
     (
         "Universidade de São Paulo",
         "USP",
     ): [
-        "Ciência da Computação",
-        "Sistemas de Informação",
-        "Engenharia de Computação",
+        ("Ciência da Computação", 8),
+        ("Sistemas de Informação", 8),
+        ("Engenharia de Computação", 10),
     ],
     (
         "Universidade Estadual Paulista",
         "UNESP",
     ): [
-        "Ciência da Computação",
-        "Engenharia de Produção",
+        ("Ciência da Computação", 8),
+        ("Engenharia de Produção", 10),
     ],
     (
         "Instituto Federal de São Paulo",
         "IFSP",
     ): [
-        "Análise e Desenvolvimento de Sistemas",
-        "Engenharia Elétrica",
+        ("Análise e Desenvolvimento de Sistemas", 6),
+        ("Engenharia Elétrica", 10),
     ],
 }
 
@@ -122,11 +129,24 @@ async def semear() -> tuple[int, int]:
                     universidades_novas += 1
                     await sessao.flush()
 
-            for nome_do_curso in cursos:
+            for nome_do_curso, semestres in cursos:
                 curso_id = _id_de("curso", sigla, nome_do_curso)
-                if await sessao.get(Curso, curso_id) is None:
-                    sessao.add(Curso(id=curso_id, universidade_id=uni_id, nome=nome_do_curso))
+                curso = await sessao.get(Curso, curso_id)
+                if curso is None:
+                    sessao.add(
+                        Curso(
+                            id=curso_id,
+                            universidade_id=uni_id,
+                            nome=nome_do_curso,
+                            duracao_semestres=semestres,
+                        )
+                    )
                     cursos_novos += 1
+                elif curso.duracao_semestres is None:
+                    # Base semeada antes de a duração existir. Completa só o que
+                    # está nulo: uma duração que a instituição já corrigiu na tela
+                    # não pode ser sobrescrita pelo valor de catálogo a cada seed.
+                    curso.duracao_semestres = semestres
 
         await sessao.commit()
 

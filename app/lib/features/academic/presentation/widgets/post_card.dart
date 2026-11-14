@@ -10,6 +10,7 @@ import 'package:integra/core/theme/integra_theme.dart';
 import 'package:integra/core/theme/tokens.dart';
 import 'package:integra/features/academic/data/models/post.dart';
 import 'package:integra/shared/domain/tempo.dart';
+import 'package:integra/shared/presentation/avatar_de_conta.dart';
 
 /// O card de um comunicado.
 ///
@@ -188,15 +189,10 @@ class _Cabecalho extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: cores.academico.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          alignment: Alignment.center,
-          child: Icon(LucideIcons.school, size: 18, color: cores.academico),
+        AvatarDeConta(
+          fotoUrl: post.instituicao.fotoUrl,
+          fundo: cores.academico.withValues(alpha: 0.12),
+          semFoto: Icon(LucideIcons.school, size: 18, color: cores.academico),
         ),
         const SizedBox(width: Espaco.sm),
         Expanded(

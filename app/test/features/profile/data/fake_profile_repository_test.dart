@@ -340,6 +340,90 @@ void main() {
     });
   });
 
+  group('prazo da matrícula', () {
+    /// Reescreve a matrícula de Ana com uma data de cadastro no passado.
+    ///
+    /// `MatriculaFalsa` é imutável, então é remover e pôr de volta — e envelhecer
+    /// a linha é a única coisa que o relógio real não faz num teste.
+    void matriculadaHa({required int dias}) {
+      final antiga = banco.matriculas.firstWhere(
+        (m) =>
+            m.universidadeId == Fixtures.fatecRp.id && m.cpf == Fixtures.cpfAna,
+      );
+      banco.matriculas
+        ..remove(antiga)
+        ..add(
+          MatriculaFalsa(
+            id: antiga.id,
+            universidadeId: antiga.universidadeId,
+            cpf: antiga.cpf,
+            cursoId: antiga.cursoId,
+            criadoEm: DateTime.now().toUtc().subtract(Duration(days: dias)),
+          ),
+        );
+    }
+
+    test('dentro do prazo, a matrícula fica e o vínculo também', () async {
+      // ADS dura 6 semestres — três anos. Dois anos de curso não vencem nada.
+      matriculadaHa(dias: 730);
+      autenticarComo(Fixtures.perfilFatec.id);
+
+      final lista = await repo.minhasMatriculas();
+
+      expect(lista.where((m) => m.cpf == Fixtures.cpfAna), hasLength(1));
+      autenticarComo(Fixtures.perfilDemo.id);
+      expect(await repo.meuVinculo(), isNotNull);
+    });
+
+    test('a lista traz o prazo calculado, e ele sai do cadastro', () async {
+      matriculadaHa(dias: 730);
+      autenticarComo(Fixtures.perfilFatec.id);
+
+      final minha = (await repo.minhasMatriculas()).firstWhere(
+        (m) => m.cpf == Fixtures.cpfAna,
+      );
+
+      // Seis semestres são 36 meses de calendário a partir do cadastro.
+      expect(minha.expiraEm, isNotNull);
+      expect(minha.expiraEm!.year, minha.criadoEm.year + 3);
+      expect(minha.expiraEm!.month, minha.criadoEm.month);
+    });
+
+    test('vencido o prazo, matrícula e vínculo saem e o selo fica', () async {
+      // Quatro anos: passou dos três que ADS dura.
+      matriculadaHa(dias: 1461);
+      autenticarComo(Fixtures.perfilFatec.id);
+
+      final lista = await repo.minhasMatriculas();
+      expect(lista.where((m) => m.cpf == Fixtures.cpfAna), isEmpty);
+
+      autenticarComo(Fixtures.perfilDemo.id);
+      expect(
+        await repo.meuVinculo(),
+        isNull,
+        reason: 'sem vínculo, sem post privado da instituição',
+      );
+      final perfil = await repo.meuPerfil();
+      expect(
+        perfil.formacoes.where((f) => f.verificada),
+        isNotEmpty,
+        reason: 'o verificado fica no currículo — ela cursou o que cursou',
+      );
+    });
+
+    test('inserir o CPF de novo depois do prazo é recusado', () async {
+      matriculadaHa(dias: 1461);
+
+      await expectLater(
+        repo.criarVinculo(
+          universidadeId: Fixtures.fatecRp.id,
+          cpf: Fixtures.cpfAna,
+        ),
+        throwsA(isA<FalhaDeConflito>()),
+      );
+    });
+  });
+
   group('seguir universidades', () {
     test(
       'a do vínculo entra na lista sem ninguém ter clicado em seguir',

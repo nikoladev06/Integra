@@ -161,7 +161,9 @@ async def meus_cursos(sessao: SessaoDep, conta: FaculdadeDep) -> list[CursoOut]:
 @router.post("/universidades/me/cursos", response_model=CursoOut, status_code=201)
 async def criar_curso(dados: CriarCursoIn, sessao: SessaoDep, conta: FaculdadeAtivaDep) -> CursoOut:
     universidade = await instituicoes.universidade_da_conta(sessao, conta.id)
-    criado = await instituicoes.criar_curso(sessao, universidade.id, dados.nome)
+    criado = await instituicoes.criar_curso(
+        sessao, universidade.id, dados.nome, duracao_semestres=dados.duracao_semestres
+    )
     return CursoOut.model_validate(criado)
 
 
@@ -186,6 +188,7 @@ async def listar_matriculas(
             vinculada=dono is not None,
             usuario=PerfilPublicoOut.model_validate(dono) if dono else None,
             criado_em=matricula.criado_em,
+            expira_em=matricula.expira_em,
         )
         for matricula, dono in linhas
     ]
@@ -205,6 +208,7 @@ async def criar_matricula(
         vinculada=False,
         usuario=None,
         criado_em=criada.criado_em,
+        expira_em=criada.expira_em,
     )
 
 

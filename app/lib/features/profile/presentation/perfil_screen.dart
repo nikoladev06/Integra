@@ -20,6 +20,7 @@ import 'package:integra/features/profile/presentation/widgets/formacoes_e_vincul
 import 'package:integra/shared/widgets/abas_de_icone.dart';
 import 'package:integra/shared/widgets/cabecalho_integra.dart';
 import 'package:integra/shared/widgets/estado_vazio.dart';
+import 'package:integra/shared/domain/imagens_locais.dart';
 
 /// `GET /users/{id}` — o perfil público de outra conta.
 final perfilDeProvider = FutureProvider.autoDispose.family<Perfil, String>(
@@ -620,8 +621,8 @@ class _Identificacao extends StatelessWidget {
             alignment: Alignment.center,
             child: perfil.fotoUrl == null
                 ? _Iniciais(perfil: perfil)
-                : Image.network(
-                    perfil.fotoUrl!,
+                : Image(
+                    image: imagemDe(perfil.fotoUrl!),
                     width: 64,
                     height: 64,
                     fit: BoxFit.cover,

@@ -14,13 +14,15 @@ A v2 separa em duas entidades com cardinalidades diferentes:
 
 E uma terceira, do lado da instituição:
 
-    Matricula  a lista de CPF que a faculdade cadastra, antes de a conta existir
+    Matricula  a lista de CPF que a faculdade cadastra, antes de a conta existir,
+               e que **vence** nos semestres que o curso declara
 
 A consequência que não se pode esquecer em nenhuma consulta: **formação
 verificada sem vínculo ativo não concede nada.** Quem se formou, ou foi removido
 pela instituição, mantém o selo e volta a ver apenas os posts públicos.
 """
 
+from calendar import monthrange
 from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
@@ -53,6 +55,26 @@ class TipoConta(StrEnum):
 
 def _agora() -> datetime:
     return datetime.now(UTC)
+
+
+# Um semestre é meio ano de calendário. Não é aproximação: é a unidade em que a
+# instituição declara a duração do curso, e em que o prazo da matrícula conta.
+MESES_POR_SEMESTRE = 6
+
+
+def somar_semestres(inicio: datetime, semestres: int) -> datetime:
+    """`inicio` mais `semestres` semestres, em meses de calendário.
+
+    Somar dias seria mais curto e estaria errado: 182 dias por semestre adianta o
+    fim de um curso de 10 semestres em quase uma semana, e o aluno perde o acesso
+    antes da hora por causa de anos bissextos.
+
+    O `min` no dia é para 31/08 + 1 semestre dar 28/02, e não estourar: fevereiro
+    não tem dia 31.
+    """
+    meses = inicio.month - 1 + semestres * MESES_POR_SEMESTRE
+    ano, mes = inicio.year + meses // 12, meses % 12 + 1
+    return inicio.replace(year=ano, month=mes, day=min(inicio.day, monthrange(ano, mes)[1]))
 
 
 class Universidade(Base):
@@ -100,14 +122,34 @@ class Curso(Base):
     """Curso cadastrado pela própria instituição, nas configurações dela."""
 
     __tablename__ = "cursos"
-    # O mesmo nome de curso existe em várias universidades; a unicidade é do par.
-    __table_args__ = (UniqueConstraint("universidade_id", "nome"),)
+    __table_args__ = (
+        # O mesmo nome de curso existe em várias universidades; a unicidade é do par.
+        UniqueConstraint("universidade_id", "nome"),
+        # 20 semestres são dez anos: não existe graduação mais longa, e um dígito
+        # digitado errado na tela da secretaria para aqui em vez de virar uma
+        # matrícula que vence no próximo século.
+        CheckConstraint(
+            "duracao_semestres IS NULL OR duracao_semestres BETWEEN 1 AND 20",
+            name="duracao_em_semestres_plausivel",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid4)
     universidade_id: Mapped[UUID] = mapped_column(
         ForeignKey("universidades.id", ondelete="CASCADE"), index=True
     )
     nome: Mapped[str] = mapped_column(String(200))
+
+    # Quantos semestres o curso dura, e por consequência quanto tempo vale uma
+    # matrícula nele — a contagem corre de `Matricula.criado_em`. Ver
+    # [Matricula.expira_em], que é onde a conta acontece.
+    #
+    # **Nulo nos cursos que existiam antes desta regra**, inclusive os do seed.
+    # Sem duração declarada a matrícula não vence: é mais honesto que arbitrar um
+    # prazo para o curso de alguém. Todo curso novo é obrigado a declarar — a
+    # exigência mora em `CriarCursoIn`, não aqui, porque o nulo tem que continuar
+    # representável para as linhas antigas.
+    duracao_semestres: Mapped[int | None] = mapped_column()
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     universidade: Mapped[Universidade] = relationship(back_populates="cursos")
@@ -288,6 +330,12 @@ class Matricula(Base):
 
     Por isso não há chave estrangeira para `usuarios`: o CPF é o único elo, e ele
     pode não corresponder a conta nenhuma ainda.
+
+    **Tem prazo.** A matrícula vale os semestres que o curso declara, contados de
+    `criado_em`. Passado o prazo ela é apagada, e o vínculo que ela sustenta vai
+    com ela — ver `services.instituicoes.expirar_matriculas_vencidas`. O que
+    **não** vai é a formação verificada: ela cursou o que cursou, e no currículo
+    fica o selo ao lado do nome da instituição.
     """
 
     __tablename__ = "matriculas"
@@ -305,10 +353,39 @@ class Matricula(Base):
     cpf: Mapped[str] = mapped_column(String(11), index=True)
     curso_id: Mapped[UUID] = mapped_column(ForeignKey("cursos.id", ondelete="RESTRICT"))
 
+    # **O início da contagem.** É a data em que a instituição cadastrou o CPF, e
+    # não a do vínculo: o prazo é do curso, e não do dia em que o aluno resolveu
+    # informar o CPF no app. Quem demora um ano para informar chega com um ano a
+    # menos — que é o que acontece na faculdade de verdade.
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     universidade: Mapped[Universidade] = relationship(lazy="joined")
     curso: Mapped[Curso] = relationship(lazy="joined")
+
+    @property
+    def expira_em(self) -> datetime | None:
+        """Quando esta matrícula deixa de valer. **Nulo = não vence.**
+
+        Nulo quando o curso não declara duração, o caso das linhas que existiam
+        antes desta regra. Nenhum outro caso: curso com duração sempre tem prazo.
+
+        Derivado, e não uma coluna: uma data gravada na criação envelheceria em
+        silêncio no dia em que a instituição corrigisse a duração do curso.
+        """
+        if self.curso.duracao_semestres is None:
+            return None
+        return somar_semestres(self.criado_em, self.curso.duracao_semestres)
+
+    @property
+    def vencida(self) -> bool:
+        """Se o prazo já passou. **A única definição de "passou".**
+
+        Lida pelos dois lados da regra: por quem apaga as vencidas e por quem
+        recusa criar vínculo a partir de uma. Duas comparações escritas à mão
+        divergiriam na borda — e a borda aqui é o dia em que o aluno perde acesso.
+        """
+        fim = self.expira_em
+        return fim is not None and fim <= datetime.now(UTC)
 
 
 class SeguindoUniversidade(Base):

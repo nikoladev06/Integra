@@ -6,6 +6,7 @@ import 'package:integra/features/professional/data/feed_repository.dart';
 import 'package:integra/features/professional/data/models/post_profissional.dart';
 import 'package:integra/features/profile/data/banco_falso.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
+import 'package:integra/shared/domain/imagens_locais.dart';
 
 /// [FeedRepository] em memória, sobre o [BancoFalso].
 ///
@@ -430,11 +431,11 @@ class FakeFeedRepository implements FeedRepository {
     Uint8List bytes, {
     required String contentType,
   }) async {
-    // Não há storage no modo de fixtures. Responder sucesso é o certo: a tela
-    // continua o fluxo e grava a `imagemUrl` no post, então a composição com imagem é
-    // demonstrável sem MinIO — e o card mostra uma imagem quebrada, que é honesto,
-    // porque o arquivo realmente não foi a lugar nenhum.
+    // Não há storage no modo de fixtures, e por isso os bytes ficam em memória sob a
+    // `urlFinal` que acabou de ser emitida: é o que faz a imagem escolhida aparecer no
+    // card do post sem MinIO. Ver `imagensLocais`.
     await _esperar();
+    imagensLocais[destino.urlFinal] = bytes;
   }
 
   // ──────────────────────────────  auxiliares  ──────────────────────────────

@@ -22,6 +22,8 @@
 .claude
 .agents
 PLANO.md
+reports/
+research_notes/
 
 # ---------- app/ (Flutter) ----------
 app/.dart_tool/

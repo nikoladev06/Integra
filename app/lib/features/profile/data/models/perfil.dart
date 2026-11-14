@@ -42,9 +42,19 @@ abstract class Universidade with _$Universidade {
       _$UniversidadeFromJson(json);
 }
 
+/// Um curso de uma instituição.
+///
+/// [duracaoSemestres] é o que dá prazo às matrículas nele: a contagem corre da
+/// data em que a instituição cadastrou o CPF do aluno. Nulo nos cursos
+/// cadastrados antes da regra existir — nesses a matrícula não vence. Todo curso
+/// novo é obrigado a declarar a duração.
 @freezed
 abstract class Curso with _$Curso {
-  const factory Curso({required String id, required String nome}) = _Curso;
+  const factory Curso({
+    required String id,
+    required String nome,
+    int? duracaoSemestres,
+  }) = _Curso;
 
   factory Curso.fromJson(Map<String, dynamic> json) => _$CursoFromJson(json);
 }

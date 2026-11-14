@@ -70,17 +70,23 @@ abstract final class Fixtures {
     sigla: 'USP',
   );
 
+  // As durações são as padrão de cada modalidade no Brasil, como no seed do
+  // user-service: tecnólogo 6 semestres, bacharelado 8. É o que dá prazo às
+  // matrículas destes cursos na demo.
   static const ads = Curso(
     id: 'curso-ads',
     nome: 'Análise e Desenvolvimento de Sistemas',
+    duracaoSemestres: 6,
   );
   static const gestaoEmpresarial = Curso(
     id: 'curso-gestao',
     nome: 'Gestão Empresarial',
+    duracaoSemestres: 6,
   );
   static const cienciaComputacao = Curso(
     id: 'curso-cc',
     nome: 'Ciência da Computação',
+    duracaoSemestres: 8,
   );
 
   static const universidades = [fatecRp, usp];

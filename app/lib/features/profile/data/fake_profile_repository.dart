@@ -7,6 +7,7 @@ import 'package:integra/features/profile/data/models/instituicao.dart';
 import 'package:integra/features/profile/data/models/perfil.dart';
 import 'package:integra/features/profile/data/profile_repository.dart';
 import 'package:integra/shared/domain/documentos.dart';
+import 'package:integra/shared/domain/imagens_locais.dart';
 
 /// [ProfileRepository] em memória, sobre o [BancoFalso].
 ///
@@ -202,6 +203,19 @@ class FakeProfileRepository implements ProfileRepository {
     }
 
     final curso = _banco.cursoPorId(universidadeId, matricula.cursoId)!;
+
+    // Passo 3 — a matrícula não venceu? **É o guarda que importa**: sem ele uma
+    // matrícula vencida que a varredura ainda não alcançou devolveria acesso
+    // completo a quem inserisse o CPF. Mensagem própria, e não a recusa genérica
+    // dos passos 1 e 2: só o CPF da própria conta chega até aqui.
+    final prazo = _expiraEm(matricula, curso);
+    if (prazo != null && !prazo.isAfter(DateTime.now().toUtc())) {
+      throw const FalhaDeConflito(
+        'O período do seu curso nesta instituição terminou. '
+        'Sua formação continua verificada no seu perfil.',
+      );
+    }
+
     final agora = DateTime.now().toUtc();
 
     // Um vínculo por vez: o novo substitui o anterior, e quem troca de
@@ -547,7 +561,7 @@ class FakeProfileRepository implements ProfileRepository {
   }
 
   @override
-  Future<Curso> criarCurso(String nome) async {
+  Future<Curso> criarCurso(String nome, {required int duracaoSemestres}) async {
     await _esperar();
 
     final universidadeId = _minhaInstituicao();
@@ -557,6 +571,15 @@ class FakeProfileRepository implements ProfileRepository {
       throw const FalhaDeValidacao(
         campos: {
           'nome': ['O nome do curso precisa ter ao menos 2 caracteres'],
+        },
+      );
+    }
+    // A mesma faixa do `CheckConstraint` da tabela. Dez anos: não existe
+    // graduação mais longa, e um dígito digitado errado para aqui.
+    if (duracaoSemestres < 1 || duracaoSemestres > 20) {
+      throw const FalhaDeValidacao(
+        campos: {
+          'duracaoSemestres': ['A duração deve ser de 1 a 20 semestres'],
         },
       );
     }
@@ -571,7 +594,11 @@ class FakeProfileRepository implements ProfileRepository {
       );
     }
 
-    final curso = Curso(id: _banco.proximoId('curso'), nome: limpo);
+    final curso = Curso(
+      id: _banco.proximoId('curso'),
+      nome: limpo,
+      duracaoSemestres: duracaoSemestres,
+    );
     lista.add(curso);
     lista.sort((a, b) => a.nome.compareTo(b.nome));
     return curso;
@@ -620,6 +647,7 @@ class FakeProfileRepository implements ProfileRepository {
     await _esperar();
 
     final universidadeId = _minhaInstituicao();
+    _expirarVencidas(universidadeId);
 
     final linhas =
         _banco.matriculas
@@ -658,8 +686,66 @@ class FakeProfileRepository implements ProfileRepository {
           Curso(id: matricula.cursoId, nome: 'Curso removido'),
       vinculada: vinculada,
       usuario: dono == null ? null : _publico(dono),
-      criadoEm: dono?.criadoEm ?? DateTime.now().toUtc(),
+      criadoEm: matricula.criadoEm,
+      expiraEm: _expiraEm(
+        matricula,
+        _banco.cursoPorId(universidadeId, matricula.cursoId),
+      ),
     );
+  }
+
+  /// O prazo da matrícula: a data de cadastro mais a duração do curso.
+  ///
+  /// Nulo quando o curso não declara duração — essa matrícula não vence. A soma é
+  /// em **meses de calendário**, e o dia é limitado ao último do mês de destino
+  /// (31/08 + 1 semestre é 28/02, não 03/03): é a mesma conta do servidor, que é
+  /// quem manda o campo de verdade. Aqui ela existe porque este é o servidor.
+  DateTime? _expiraEm(MatriculaFalsa matricula, Curso? curso) {
+    final semestres = curso?.duracaoSemestres;
+    if (semestres == null) return null;
+
+    final inicio = matricula.criadoEm;
+    final meses = inicio.month - 1 + semestres * 6;
+    final ano = inicio.year + meses ~/ 12;
+    final mes = meses % 12 + 1;
+    final ultimoDia = DateTime.utc(ano, mes + 1, 0).day;
+
+    return DateTime.utc(
+      ano,
+      mes,
+      inicio.day < ultimoDia ? inicio.day : ultimoDia,
+      inicio.hour,
+      inicio.minute,
+      inicio.second,
+    );
+  }
+
+  /// Apaga as matrículas vencidas desta instituição, **e os vínculos que elas
+  /// sustentam**. A formação verificada fica.
+  ///
+  /// Espelha `expirar_matriculas_vencidas` do user-service, inclusive no ponto em
+  /// que roda: a lista da secretaria é uma das telas onde a linha apareceria.
+  void _expirarVencidas(String universidadeId) {
+    final agora = DateTime.now().toUtc();
+
+    final vencidas = _banco.matriculas.where((m) {
+      if (m.universidadeId != universidadeId) return false;
+      final prazo = _expiraEm(m, _banco.cursoPorId(universidadeId, m.cursoId));
+      return prazo != null && !prazo.isAfter(agora);
+    }).toList();
+
+    for (final matricula in vencidas) {
+      _banco.matriculas.remove(matricula);
+
+      final dono = _banco.usuarios.values
+          .where((u) => u.cpf == matricula.cpf)
+          .firstOrNull;
+      // Só derruba o vínculo se ele for com ESTA instituição: quem já migrou não
+      // perde o vínculo novo porque a matrícula antiga venceu.
+      if (dono?.vinculo?.universidade.id == universidadeId) {
+        _banco.salvar(dono!.copyWith(vinculo: null));
+      }
+    }
   }
 
   @override
@@ -697,6 +783,7 @@ class FakeProfileRepository implements ProfileRepository {
       universidadeId: universidadeId,
       cpf: digitos,
       cursoId: cursoId,
+      criadoEm: DateTime.now().toUtc(),
     );
     _banco.matriculas.add(matricula);
 
@@ -761,7 +848,8 @@ class FakeProfileRepository implements ProfileRepository {
 
     // O caminho e derivado do id de quem pede, como no servidor: o cliente nao o
     // escolhe, e por isso nao ha como sobrescrever a foto de outra pessoa.
-    final chave = 'avatares/${conta.id}/${_banco.proximoId('avatar')}.$extensao';
+    final chave =
+        'avatares/${conta.id}/${_banco.proximoId('avatar')}.$extensao';
     return UrlDeUpload(
       // Um host que nao existe, de proposito: nada e enviado no modo de fixtures, e
       // uma URL que parecesse valida convidaria alguem a tentar abri-la.
@@ -777,11 +865,11 @@ class FakeProfileRepository implements ProfileRepository {
     Uint8List bytes, {
     required String contentType,
   }) async {
-    // Nao ha storage no modo de fixtures. Responder sucesso e o certo: a tela
-    // continua o fluxo e grava a `fotoUrl` no perfil, entao a troca de foto e
-    // demonstravel sem MinIO — e o avatar mostra imagem quebrada, que e honesto,
-    // porque o arquivo realmente nao foi a lugar nenhum.
+    // Nao ha storage no modo de fixtures, e por isso os bytes ficam em memoria sob a
+    // `urlFinal` que acabou de ser emitida: e o que faz a foto escolhida aparecer no
+    // perfil sem MinIO. Ver `imagensLocais`.
     await _esperar();
+    imagensLocais[destino.urlFinal] = bytes;
   }
 
   static const _tamanhoMaximoDeImagem = 5 * 1024 * 1024;

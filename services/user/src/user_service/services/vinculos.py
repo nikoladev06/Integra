@@ -54,6 +54,7 @@ async def criar(
 
       1. o CPF enviado é o da própria conta
       2. esse CPF consta nas matrículas desta universidade
+      3. essa matrícula não venceu
 
     A primeira é o que impede a escalada. O CPF não é segredo no Brasil — circula
     em vazamentos e cadastros de todo tipo — então conferir apenas contra a lista
@@ -88,6 +89,29 @@ async def criar(
 
     if matricula is None:
         raise _recusado(404)
+
+    if matricula.vencida:
+        # O prazo do curso acabou. **Este é o guarda que importa**, e não a
+        # varredura: sem ele, uma matrícula vencida que a varredura ainda não
+        # alcançou devolveria acesso completo a quem inserisse o CPF.
+        #
+        # Não apaga a linha aqui. A dependência de sessão faz rollback em qualquer
+        # exceção, então a remoção seria desfeita pelo próprio erro — e escrever
+        # antes de recusar é como se perde metade de uma operação. Quem apaga é
+        # `instituicoes.expirar_matriculas_vencidas`, no caminho que não levanta.
+        #
+        # Mensagem própria, e não a recusa genérica: só o CPF da própria conta
+        # chega até aqui, então contar o motivo não revela nada sobre terceiros —
+        # e "não encontramos esse CPF" mandaria o aluno procurar um erro de
+        # digitação que não existe.
+        raise AppError(
+            code="matricula_vencida",
+            message=(
+                "O período do seu curso nesta instituição terminou. "
+                "Sua formação continua verificada no seu perfil."
+            ),
+            status_code=409,
+        )
 
     agora = datetime.now(UTC)
 
