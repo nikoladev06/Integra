@@ -271,5 +271,11 @@ async def perfil_interno(
 
     Devolve `PerfilOut`, com `vinculo`, porque é de lá que saem os claims
     `vinculoUniversidadeId` e `vinculoCursoId`.
+
+    **Varre as matrículas vencidas antes de ler o vínculo.** Esta rota é chamada a
+    cada login e a cada renovação de token, então é o relógio natural da regra de
+    prazo: nenhum token novo nasce carregando o vínculo de uma matrícula que já
+    venceu. Sem isto, a expiração precisaria de um cron só para ela.
     """
+    await instituicoes.expirar_matriculas_vencidas(sessao, usuario_id=userId)
     return PerfilOut.model_validate(await perfis.obter(sessao, userId))

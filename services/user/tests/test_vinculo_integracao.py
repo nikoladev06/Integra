@@ -400,7 +400,9 @@ class TestMatriculas:
     async def test_curso_em_uso_nao_pode_ser_removido(self, sessao):
         fatec, _, _, _ = await _instituicoes(sessao)
         conta = await _conta_da_faculdade(sessao, fatec)
-        curso = await instituicoes.criar_curso(sessao, fatec.id, "Curso Temporario")
+        curso = await instituicoes.criar_curso(
+            sessao, fatec.id, "Curso Temporario", duracao_semestres=6
+        )
         await instituicoes.criar_matricula(sessao, fatec.id, CPF_ALUNA, curso.id)
 
         with pytest.raises(AppError) as erro:
@@ -413,7 +415,9 @@ class TestMatriculas:
         SEMPRE a remoção passaria igual."""
         fatec, _, _, _ = await _instituicoes(sessao)
         await _conta_da_faculdade(sessao, fatec)
-        curso = await instituicoes.criar_curso(sessao, fatec.id, "Curso Sem Uso")
+        curso = await instituicoes.criar_curso(
+            sessao, fatec.id, "Curso Sem Uso", duracao_semestres=6
+        )
 
         await instituicoes.remover_curso(sessao, fatec.id, curso.id)
 

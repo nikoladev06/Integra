@@ -148,7 +148,12 @@ abstract interface class ProfileRepository {
   Future<List<Curso>> meusCursos();
 
   /// `POST /universidades/me/cursos`. Nome duplicado na mesma instituição é 409.
-  Future<Curso> criarCurso(String nome);
+  ///
+  /// [duracaoSemestres] é obrigatório e sem padrão: é o prazo de toda matrícula
+  /// neste curso. Nomeado, e não posicional, porque `criarCurso(nome, 8)` não
+  /// diz o que o 8 é — e os dois números plausíveis ali, semestres e anos,
+  /// diferem por um fator de dois no prazo de todo mundo.
+  Future<Curso> criarCurso(String nome, {required int duracaoSemestres});
 
   /// `DELETE /universidades/me/cursos/{id}`.
   ///

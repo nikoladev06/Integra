@@ -74,17 +74,34 @@ extension UniversidadeSeguidaX on UniversidadeSeguida {
 /// faculdade matricula quem **ainda não tem conta**, e o encontro acontece quando
 /// a pessoa informa o CPF no perfil dela. Por isso não existe chave estrangeira
 /// para usuário no banco — o CPF é o único elo.
+///
+/// **Tem prazo.** Vale os semestres que o curso declara, contados de [criadoEm].
+/// Quando vence, a matrícula é apagada e o vínculo vai com ela: o aluno volta a
+/// ver apenas os posts públicos da instituição e **mantém a formação
+/// verificada** — o selo ao lado do nome da faculdade no currículo.
 @freezed
 abstract class Matricula with _$Matricula {
   const factory Matricula({
     required String id,
     required String cpf,
     required Curso curso,
+
+    /// Quando a instituição cadastrou o CPF. **É o início da contagem do prazo**,
+    /// e não a data do vínculo: quem demora para informar o CPF no app chega com
+    /// menos tempo, como na faculdade.
     required DateTime criadoEm,
 
     /// Se já existe conta com este CPF **e vínculo ativo** aqui.
     @Default(false) bool vinculada,
     Perfil? usuario,
+
+    /// Quando esta matrícula deixa de valer: [criadoEm] mais a duração do curso.
+    /// Nulo quando o curso não declara duração — aí ela não vence.
+    ///
+    /// **Vem calculado do servidor**, e a tela não refaz a conta: ela é em meses
+    /// de calendário, e duas implementações discordariam na borda — que é
+    /// justamente o dia em que o aluno perde o acesso.
+    DateTime? expiraEm,
   }) = _Matricula;
 
   factory Matricula.fromJson(Map<String, dynamic> json) =>
@@ -101,6 +118,16 @@ extension MatriculaX on Matricula {
 
   /// Aguardando a pessoa informar o CPF no perfil da instituição.
   bool get pendente => !vinculada;
+
+  /// Prazo formatado para a lista da secretaria, ou `null` quando não vence.
+  String? get prazoFormatado {
+    final fim = expiraEm;
+    if (fim == null) return null;
+    final local = fim.toLocal();
+    final dia = local.day.toString().padLeft(2, '0');
+    final mes = local.month.toString().padLeft(2, '0');
+    return '$dia/$mes/${local.year}';
+  }
 }
 
 /// Resultado de `GET /busca` — a busca do cabeçalho.

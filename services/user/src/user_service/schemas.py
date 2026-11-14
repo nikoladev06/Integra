@@ -53,6 +53,10 @@ class CursoOut(_Saida):
     id: UUID
     nome: str
 
+    # Nulo nos cursos cadastrados antes de a duração existir — nesses, a matrícula
+    # não vence. Todo curso novo declara (ver `CriarCursoIn`).
+    duracao_semestres: int | None = None
+
 
 class UniversidadeSeguidaOut(UniversidadeOut):
     propria: bool
@@ -236,6 +240,14 @@ class MatriculaOut(_Saida):
     usuario: PerfilPublicoOut | None = None
     criado_em: datetime
 
+    # Quando esta matrícula deixa de valer: `criado_em` mais a duração do curso.
+    # Nulo quando o curso não declara duração — aí ela não vence.
+    #
+    # Sai calculado em vez de a tela somar: a conta é em meses de calendário, e
+    # duas implementações dela (aqui e no cliente) discordariam na borda, que é
+    # justamente o dia em que o aluno perde o acesso.
+    expira_em: datetime | None = None
+
 
 class CriarMatriculaIn(_Entrada):
     cpf: str
@@ -244,6 +256,15 @@ class CriarMatriculaIn(_Entrada):
 
 class CriarCursoIn(_Entrada):
     nome: str = Field(min_length=2, max_length=200)
+
+    # Obrigatório, e sem padrão: é o que define por quanto tempo cada matrícula
+    # neste curso vale. Um padrão aqui daria a quem esqueceu o campo um prazo que
+    # a instituição não escolheu — e o sintoma apareceria semestres depois, com
+    # alunos perdendo acesso antes ou depois da hora.
+    #
+    # O teto de 20 (dez anos) é o mesmo do `CheckConstraint` da tabela: os dois
+    # existem porque este schema não é o único caminho até a coluna.
+    duracao_semestres: int = Field(ge=1, le=20)
 
 
 # ──────────────────────────────  busca  ──────────────────────────────

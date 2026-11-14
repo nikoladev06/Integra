@@ -186,8 +186,14 @@ class ApiProfileRepository implements ProfileRepository {
   }
 
   @override
-  Future<Curso> criarCurso(String nome) async => Curso.fromJson(
-    await _api.post('/universidades/me/cursos', corpo: {'nome': nome.trim()}),
+  Future<Curso> criarCurso(
+    String nome, {
+    required int duracaoSemestres,
+  }) async => Curso.fromJson(
+    await _api.post(
+      '/universidades/me/cursos',
+      corpo: {'nome': nome.trim(), 'duracaoSemestres': duracaoSemestres},
+    ),
   );
 
   @override

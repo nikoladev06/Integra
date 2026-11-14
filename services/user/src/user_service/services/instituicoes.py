@@ -194,7 +194,23 @@ async def listar_cursos(sessao: AsyncSession, universidade_id: UUID) -> list[Cur
     return list(resultado.scalars())
 
 
-async def criar_curso(sessao: AsyncSession, universidade_id: UUID, nome: str) -> Curso:
+async def criar_curso(
+    sessao: AsyncSession,
+    universidade_id: UUID,
+    nome: str,
+    *,
+    duracao_semestres: int,
+) -> Curso:
+    """Cadastra um curso da instituição. **A duração é obrigatória.**
+
+    `duracao_semestres` é nomeado, e não posicional, porque `(sessao, uni, nome, 8)`
+    na chamada não diz o que o 8 é — e os dois números plausíveis ali, semestres e
+    anos, diferem por um fator de dois no prazo de todo mundo.
+
+    O campo não tem padrão. Um `= 8` faria a instituição que esqueceu o campo
+    receber um prazo que ela não escolheu, e o erro só apareceria anos depois, na
+    forma de alunos perdendo acesso cedo ou tarde demais.
+    """
     nome = nome.strip()
     existente = (
         await sessao.execute(
@@ -212,7 +228,7 @@ async def criar_curso(sessao: AsyncSession, universidade_id: UUID, nome: str) ->
             status_code=409,
         )
 
-    curso = Curso(universidade_id=universidade_id, nome=nome)
+    curso = Curso(universidade_id=universidade_id, nome=nome, duracao_semestres=duracao_semestres)
     sessao.add(curso)
     await sessao.flush()
     await sessao.refresh(curso)
@@ -274,7 +290,15 @@ async def listar_matriculas(
 
     O `LEFT JOIN` é por CPF, não por chave estrangeira: a matrícula pode ter sido
     cadastrada antes de a conta existir, e é justamente esse o caso "pendente".
+
+    **Escreve antes de ler**: as vencidas desta instituição são apagadas aqui. É a
+    tela onde a secretaria veria a linha, então é onde ela não pode mais aparecer.
+    Uma leitura com efeito é incomum o bastante para merecer esta nota — e barata:
+    não há CSRF a explorar numa API de token Bearer, e sem isto a alternativa é um
+    cron só para esta varredura.
     """
+    await expirar_matriculas_vencidas(sessao, universidade_id=universidade_id)
+
     consulta = (
         select(Matricula, Usuario)
         .outerjoin(Usuario, Usuario.cpf == Matricula.cpf)
@@ -369,6 +393,77 @@ async def remover_matricula(
             status_code=404,
         )
 
-    await vinculos.encerrar_por_instituicao(sessao, universidade_id, matricula.cpf)
+    await _remover_matricula(sessao, matricula)
+
+
+async def expirar_matriculas_vencidas(
+    sessao: AsyncSession,
+    *,
+    usuario_id: UUID | None = None,
+    universidade_id: UUID | None = None,
+) -> int:
+    """Apaga as matrículas cujo prazo acabou, **e os vínculos que elas sustentam**.
+
+    O prazo é o do curso: `duracao_semestres` semestres contados da data em que a
+    instituição cadastrou o CPF. Quando passa, o aluno volta a ver apenas os posts
+    públicos da instituição — e **mantém a formação verificada**, que é o selo ao
+    lado do nome da faculdade no currículo dele.
+
+    O efeito é idêntico ao da secretaria removendo a matrícula à mão, e isso não é
+    coincidência: é a mesma função fazendo o trabalho.
+
+    **Não há cron.** A varredura roda nos dois pontos em que uma matrícula vencida
+    seria observada, e por isso nenhum deles observa uma:
+
+      1. `GET /users/interno/{id}`, que o auth-service chama a cada login e a cada
+         renovação para montar o access token — então nenhum token novo nasce
+         carregando um vínculo vencido;
+      2. a lista de matrículas da instituição, que é a tela onde a linha apareceria.
+
+    O que sobra é a mesma janela que o resto do sistema já tem e documenta: um
+    token já emitido vale até expirar, no máximo `access_token_ttl_segundos`.
+
+    Sem filtro nenhum, varre tudo — é a forma que um cron chamaria, se um dia
+    valer a pena ter um.
+
+    Devolve quantas saíram.
+    """
+    consulta = select(Matricula)
+
+    if usuario_id is not None:
+        cpf = (
+            await sessao.execute(select(Usuario.cpf).where(Usuario.id == usuario_id))
+        ).scalar_one_or_none()
+        if cpf is None:
+            # Conta institucional (CPF nulo por construção) ou conta inexistente.
+            # Nenhuma das duas tem matrícula para vencer, e o `IS NULL` que a
+            # consulta montaria casaria com matrícula nenhuma de qualquer forma.
+            return 0
+        consulta = consulta.where(Matricula.cpf == cpf)
+
+    if universidade_id is not None:
+        consulta = consulta.where(Matricula.universidade_id == universidade_id)
+
+    # ponytail: filtra em Python, sobre as matrículas do escopo. `Matricula.vencida`
+    # é a única definição do prazo, e mantê-la assim vale mais, neste tamanho, que a
+    # consulta esperta. Virar `DELETE ... USING cursos WHERE criado_em +
+    # duracao_semestres * interval '6 months' <= now()` se uma instituição passar de
+    # alguns milhares de linhas.
+    vencidas = [m for m in (await sessao.execute(consulta)).unique().scalars() if m.vencida]
+
+    for matricula in vencidas:
+        await _remover_matricula(sessao, matricula)
+
+    return len(vencidas)
+
+
+async def _remover_matricula(sessao: AsyncSession, matricula: Matricula) -> None:
+    """A matrícula sai, e o vínculo que ela sustentava sai com ela.
+
+    **A formação continua verificada.** Vale para os dois caminhos — a secretaria
+    removendo à mão e o prazo vencendo — e por isso é uma função: duas escritas
+    disto divergiriam justamente nessa metade, que é a que o aluno percebe.
+    """
+    await vinculos.encerrar_por_instituicao(sessao, matricula.universidade_id, matricula.cpf)
     await sessao.delete(matricula)
     await sessao.flush()

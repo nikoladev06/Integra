@@ -62,6 +62,9 @@ _Matricula _$MatriculaFromJson(Map<String, dynamic> json) => _Matricula(
   usuario: json['usuario'] == null
       ? null
       : Perfil.fromJson(json['usuario'] as Map<String, dynamic>),
+  expiraEm: json['expiraEm'] == null
+      ? null
+      : DateTime.parse(json['expiraEm'] as String),
 );
 
 Map<String, dynamic> _$MatriculaToJson(_Matricula instance) =>
@@ -72,6 +75,7 @@ Map<String, dynamic> _$MatriculaToJson(_Matricula instance) =>
       'criadoEm': instance.criadoEm.toIso8601String(),
       'vinculada': instance.vinculada,
       'usuario': instance.usuario,
+      'expiraEm': instance.expiraEm?.toIso8601String(),
     };
 
 _ResultadoDeBusca _$ResultadoDeBuscaFromJson(Map<String, dynamic> json) =>

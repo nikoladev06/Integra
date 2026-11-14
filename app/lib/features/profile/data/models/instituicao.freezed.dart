@@ -601,8 +601,17 @@ as DateTime?,
 /// @nodoc
 mixin _$Matricula {
 
- String get id; String get cpf; Curso get curso; DateTime get criadoEm;/// Se já existe conta com este CPF **e vínculo ativo** aqui.
- bool get vinculada; Perfil? get usuario;
+ String get id; String get cpf; Curso get curso;/// Quando a instituição cadastrou o CPF. **É o início da contagem do prazo**,
+/// e não a data do vínculo: quem demora para informar o CPF no app chega com
+/// menos tempo, como na faculdade.
+ DateTime get criadoEm;/// Se já existe conta com este CPF **e vínculo ativo** aqui.
+ bool get vinculada; Perfil? get usuario;/// Quando esta matrícula deixa de valer: [criadoEm] mais a duração do curso.
+/// Nulo quando o curso não declara duração — aí ela não vence.
+///
+/// **Vem calculado do servidor**, e a tela não refaz a conta: ela é em meses
+/// de calendário, e duas implementações discordariam na borda — que é
+/// justamente o dia em que o aluno perde o acesso.
+ DateTime? get expiraEm;
 /// Create a copy of Matricula
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -616,20 +625,20 @@ $MatriculaCopyWith<Matricula> get copyWith => _$MatriculaCopyWithImpl<Matricula>
 @override
 bool operator ==(Object other) {
   final _this = this as Matricula;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is Matricula&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.cpf, _this.cpf) || other.cpf == _this.cpf)&&(identical(other.curso, _this.curso) || other.curso == _this.curso)&&(identical(other.criadoEm, _this.criadoEm) || other.criadoEm == _this.criadoEm)&&(identical(other.vinculada, _this.vinculada) || other.vinculada == _this.vinculada)&&(identical(other.usuario, _this.usuario) || other.usuario == _this.usuario));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Matricula&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.cpf, _this.cpf) || other.cpf == _this.cpf)&&(identical(other.curso, _this.curso) || other.curso == _this.curso)&&(identical(other.criadoEm, _this.criadoEm) || other.criadoEm == _this.criadoEm)&&(identical(other.vinculada, _this.vinculada) || other.vinculada == _this.vinculada)&&(identical(other.usuario, _this.usuario) || other.usuario == _this.usuario)&&(identical(other.expiraEm, _this.expiraEm) || other.expiraEm == _this.expiraEm));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as Matricula;
-  return Object.hash(runtimeType,_this.id,_this.cpf,_this.curso,_this.criadoEm,_this.vinculada,_this.usuario);
+  return Object.hash(runtimeType,_this.id,_this.cpf,_this.curso,_this.criadoEm,_this.vinculada,_this.usuario,_this.expiraEm);
 }
 
 @override
 String toString() {
   final _this = this as Matricula;
-  return 'Matricula(id: ${_this.id}, cpf: ${_this.cpf}, curso: ${_this.curso}, criadoEm: ${_this.criadoEm}, vinculada: ${_this.vinculada}, usuario: ${_this.usuario})';
+  return 'Matricula(id: ${_this.id}, cpf: ${_this.cpf}, curso: ${_this.curso}, criadoEm: ${_this.criadoEm}, vinculada: ${_this.vinculada}, usuario: ${_this.usuario}, expiraEm: ${_this.expiraEm})';
 }
 
 
@@ -640,7 +649,7 @@ abstract mixin class $MatriculaCopyWith<$Res>  {
   factory $MatriculaCopyWith(Matricula value, $Res Function(Matricula) _then) = _$MatriculaCopyWithImpl;
 @useResult
 $Res call({
- String id, String cpf, Curso curso, DateTime criadoEm, bool vinculada, Perfil? usuario
+ String id, String cpf, Curso curso, DateTime criadoEm, bool vinculada, Perfil? usuario, DateTime? expiraEm
 });
 
 
@@ -657,7 +666,7 @@ class _$MatriculaCopyWithImpl<$Res>
 
 /// Create a copy of Matricula
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? cpf = null,Object? curso = null,Object? criadoEm = null,Object? vinculada = null,Object? usuario = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? cpf = null,Object? curso = null,Object? criadoEm = null,Object? vinculada = null,Object? usuario = freezed,Object? expiraEm = freezed,}) {
   return _then(Matricula(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,cpf: null == cpf ? _self.cpf : cpf // ignore: cast_nullable_to_non_nullable
@@ -665,7 +674,8 @@ as String,curso: null == curso ? _self.curso : curso // ignore: cast_nullable_to
 as Curso,criadoEm: null == criadoEm ? _self.criadoEm : criadoEm // ignore: cast_nullable_to_non_nullable
 as DateTime,vinculada: null == vinculada ? _self.vinculada : vinculada // ignore: cast_nullable_to_non_nullable
 as bool,usuario: freezed == usuario ? _self.usuario : usuario // ignore: cast_nullable_to_non_nullable
-as Perfil?,
+as Perfil?,expiraEm: freezed == expiraEm ? _self.expiraEm : expiraEm // ignore: cast_nullable_to_non_nullable
+as DateTime?,
   ));
 }
 /// Create a copy of Matricula
@@ -771,10 +781,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String cpf,  Curso curso,  DateTime criadoEm,  bool vinculada,  Perfil? usuario)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String cpf,  Curso curso,  DateTime criadoEm,  bool vinculada,  Perfil? usuario,  DateTime? expiraEm)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _Matricula() when $default != null:
-return $default(_that.id,_that.cpf,_that.curso,_that.criadoEm,_that.vinculada,_that.usuario);case _:
+return $default(_that.id,_that.cpf,_that.curso,_that.criadoEm,_that.vinculada,_that.usuario,_that.expiraEm);case _:
   return orElse();
 
 }
@@ -792,10 +802,10 @@ return $default(_that.id,_that.cpf,_that.curso,_that.criadoEm,_that.vinculada,_t
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String cpf,  Curso curso,  DateTime criadoEm,  bool vinculada,  Perfil? usuario)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String cpf,  Curso curso,  DateTime criadoEm,  bool vinculada,  Perfil? usuario,  DateTime? expiraEm)  $default,) {final _that = this;
 switch (_that) {
 case _Matricula():
-return $default(_that.id,_that.cpf,_that.curso,_that.criadoEm,_that.vinculada,_that.usuario);case _:
+return $default(_that.id,_that.cpf,_that.curso,_that.criadoEm,_that.vinculada,_that.usuario,_that.expiraEm);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -812,10 +822,10 @@ return $default(_that.id,_that.cpf,_that.curso,_that.criadoEm,_that.vinculada,_t
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String cpf,  Curso curso,  DateTime criadoEm,  bool vinculada,  Perfil? usuario)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String cpf,  Curso curso,  DateTime criadoEm,  bool vinculada,  Perfil? usuario,  DateTime? expiraEm)?  $default,) {final _that = this;
 switch (_that) {
 case _Matricula() when $default != null:
-return $default(_that.id,_that.cpf,_that.curso,_that.criadoEm,_that.vinculada,_that.usuario);case _:
+return $default(_that.id,_that.cpf,_that.curso,_that.criadoEm,_that.vinculada,_that.usuario,_that.expiraEm);case _:
   return null;
 
 }
@@ -827,16 +837,26 @@ return $default(_that.id,_that.cpf,_that.curso,_that.criadoEm,_that.vinculada,_t
 @JsonSerializable()
 
 class _Matricula implements Matricula {
-  const _Matricula({required this.id, required this.cpf, required this.curso, required this.criadoEm, this.vinculada = false, this.usuario});
+  const _Matricula({required this.id, required this.cpf, required this.curso, required this.criadoEm, this.vinculada = false, this.usuario, this.expiraEm});
   factory _Matricula.fromJson(Map<String, dynamic> json) => _$MatriculaFromJson(json);
 
 @override final  String id;
 @override final  String cpf;
 @override final  Curso curso;
+/// Quando a instituição cadastrou o CPF. **É o início da contagem do prazo**,
+/// e não a data do vínculo: quem demora para informar o CPF no app chega com
+/// menos tempo, como na faculdade.
 @override final  DateTime criadoEm;
 /// Se já existe conta com este CPF **e vínculo ativo** aqui.
 @override@JsonKey() final  bool vinculada;
 @override final  Perfil? usuario;
+/// Quando esta matrícula deixa de valer: [criadoEm] mais a duração do curso.
+/// Nulo quando o curso não declara duração — aí ela não vence.
+///
+/// **Vem calculado do servidor**, e a tela não refaz a conta: ela é em meses
+/// de calendário, e duas implementações discordariam na borda — que é
+/// justamente o dia em que o aluno perde o acesso.
+@override final  DateTime? expiraEm;
 
 /// Create a copy of Matricula
 /// with the given fields replaced by the non-null parameter values.
@@ -851,18 +871,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _Matricula&&(identical(other.id, id) || other.id == id)&&(identical(other.cpf, cpf) || other.cpf == cpf)&&(identical(other.curso, curso) || other.curso == curso)&&(identical(other.criadoEm, criadoEm) || other.criadoEm == criadoEm)&&(identical(other.vinculada, vinculada) || other.vinculada == vinculada)&&(identical(other.usuario, usuario) || other.usuario == usuario));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _Matricula&&(identical(other.id, id) || other.id == id)&&(identical(other.cpf, cpf) || other.cpf == cpf)&&(identical(other.curso, curso) || other.curso == curso)&&(identical(other.criadoEm, criadoEm) || other.criadoEm == criadoEm)&&(identical(other.vinculada, vinculada) || other.vinculada == vinculada)&&(identical(other.usuario, usuario) || other.usuario == usuario)&&(identical(other.expiraEm, expiraEm) || other.expiraEm == expiraEm));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,id,cpf,curso,criadoEm,vinculada,usuario);
+    return Object.hash(runtimeType,id,cpf,curso,criadoEm,vinculada,usuario,expiraEm);
 }
 
 @override
 String toString() {
-    return 'Matricula(id: $id, cpf: $cpf, curso: $curso, criadoEm: $criadoEm, vinculada: $vinculada, usuario: $usuario)';
+    return 'Matricula(id: $id, cpf: $cpf, curso: $curso, criadoEm: $criadoEm, vinculada: $vinculada, usuario: $usuario, expiraEm: $expiraEm)';
 }
 
 
@@ -873,7 +893,7 @@ abstract mixin class _$MatriculaCopyWith<$Res> implements $MatriculaCopyWith<$Re
   factory _$MatriculaCopyWith(_Matricula value, $Res Function(_Matricula) _then) = __$MatriculaCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String cpf, Curso curso, DateTime criadoEm, bool vinculada, Perfil? usuario
+ String id, String cpf, Curso curso, DateTime criadoEm, bool vinculada, Perfil? usuario, DateTime? expiraEm
 });
 
 
@@ -890,7 +910,7 @@ class __$MatriculaCopyWithImpl<$Res>
 
 /// Create a copy of Matricula
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? cpf = null,Object? curso = null,Object? criadoEm = null,Object? vinculada = null,Object? usuario = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? cpf = null,Object? curso = null,Object? criadoEm = null,Object? vinculada = null,Object? usuario = freezed,Object? expiraEm = freezed,}) {
   return _then(_Matricula(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,cpf: null == cpf ? _self.cpf : cpf // ignore: cast_nullable_to_non_nullable
@@ -898,7 +918,8 @@ as String,curso: null == curso ? _self.curso : curso // ignore: cast_nullable_to
 as Curso,criadoEm: null == criadoEm ? _self.criadoEm : criadoEm // ignore: cast_nullable_to_non_nullable
 as DateTime,vinculada: null == vinculada ? _self.vinculada : vinculada // ignore: cast_nullable_to_non_nullable
 as bool,usuario: freezed == usuario ? _self.usuario : usuario // ignore: cast_nullable_to_non_nullable
-as Perfil?,
+as Perfil?,expiraEm: freezed == expiraEm ? _self.expiraEm : expiraEm // ignore: cast_nullable_to_non_nullable
+as DateTime?,
   ));
 }
 

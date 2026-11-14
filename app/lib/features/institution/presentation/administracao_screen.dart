@@ -128,12 +128,14 @@ class _Cursos extends ConsumerStatefulWidget {
 
 class _CursosState extends ConsumerState<_Cursos> {
   final _nome = TextEditingController();
+  final _semestres = TextEditingController();
   String? _erro;
   bool _enviando = false;
 
   @override
   void dispose() {
     _nome.dispose();
+    _semestres.dispose();
     super.dispose();
   }
 
@@ -146,13 +148,26 @@ class _CursosState extends ConsumerState<_Cursos> {
       return;
     }
 
+    // Sem padrão silencioso: o campo vazio é erro, e não 8 semestres escolhidos
+    // por nós. A duração é o prazo de toda matrícula neste curso, e um palpite
+    // nosso só apareceria semestres depois, em alunos perdendo acesso fora de
+    // hora.
+    final semestres = int.tryParse(_semestres.text.trim());
+    if (semestres == null || semestres < 1 || semestres > 20) {
+      setState(() => _erro = 'Informe a duração do curso, de 1 a 20 semestres');
+      return;
+    }
+
     setState(() {
       _enviando = true;
       _erro = null;
     });
     try {
-      await ref.read(profileRepositoryProvider).criarCurso(nome);
+      await ref
+          .read(profileRepositoryProvider)
+          .criarCurso(nome, duracaoSemestres: semestres);
       _nome.clear();
+      _semestres.clear();
       ref.invalidate(meusCursosProvider);
       // A lista de matrículas mostra o nome do curso de cada linha, e o combobox
       // de matricular oferece os cursos: os dois leem `meusCursosProvider`, então
@@ -160,7 +175,12 @@ class _CursosState extends ConsumerState<_Cursos> {
       // linha com "Curso removido" precisa voltar a ter nome.
       ref.invalidate(matriculasProvider);
     } on FalhaDeValidacao catch (falha) {
-      setState(() => _erro = falha.campos['nome']?.first ?? falha.mensagem);
+      setState(
+        () => _erro =
+            falha.campos['nome']?.first ??
+            falha.campos['duracaoSemestres']?.first ??
+            falha.mensagem,
+      );
     } on Failure catch (falha) {
       setState(() => _erro = falha.mensagem);
     } finally {
@@ -205,11 +225,35 @@ class _CursosState extends ConsumerState<_Cursos> {
                   ),
                 ),
                 const SizedBox(width: Espaco.sm),
+                // Estreito de propósito: cabem dois dígitos, e o rótulo diz a
+                // unidade. "Duração: 8" sem unidade é o campo em que alguém
+                // digita 4 pensando em anos.
+                SizedBox(
+                  width: 112,
+                  child: ShadInput(
+                    controller: _semestres,
+                    placeholder: const Text('Semestres'),
+                    // Teclado numérico, e nada de `inputFormatters`: o que
+                    // recusa o lixo é a validação do `_criar`, que precisa existir
+                    // de qualquer forma — a do teclado é dica, não guarda.
+                    keyboardType: TextInputType.number,
+                    onSubmitted: (_) => _criar(),
+                  ),
+                ),
+                const SizedBox(width: Espaco.sm),
                 ShadButton(
                   onPressed: _enviando ? null : _criar,
                   child: const Text('Adicionar'),
                 ),
               ],
+            ),
+            const SizedBox(height: Espaco.xs),
+            Text(
+              'A duração em semestres é o prazo das matrículas neste curso: '
+              'passado o prazo, o cadastro do aluno e o vínculo dele com a '
+              'instituição são encerrados, e o curso fica verificado no '
+              'currículo dele.',
+              style: tema.textTheme.muted,
             ),
             if (_erro != null) ...[
               const SizedBox(height: Espaco.xs),
@@ -244,6 +288,15 @@ class _CursosState extends ConsumerState<_Cursos> {
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       title: Text(curso.nome, style: tema.textTheme.p),
+                      subtitle: Text(
+                        // Nulo nos cursos cadastrados antes desta regra: neles a
+                        // matrícula não vence, e a tela diz isso em vez de
+                        // mostrar um prazo que não existe.
+                        curso.duracaoSemestres == null
+                            ? 'Sem duração declarada — matrículas não vencem'
+                            : '${curso.duracaoSemestres} semestres',
+                        style: tema.textTheme.muted,
+                      ),
                       trailing: ShadIconButton.ghost(
                         icon: const Icon(LucideIcons.trash2, size: 16),
                         onPressed: () => _remover(curso),
@@ -514,9 +567,15 @@ class _LinhaDeMatricula extends StatelessWidget {
         style: tema.textTheme.p,
       ),
       subtitle: Text(
-        matricula.usuario == null
-            ? matricula.curso.nome
-            : '${matricula.cpfFormatado} · ${matricula.curso.nome}',
+        [
+          if (matricula.usuario != null) matricula.cpfFormatado,
+          matricula.curso.nome,
+          // O prazo vem calculado do servidor. Ausente quando o curso não
+          // declara duração — e aí a linha simplesmente não fala de prazo, em
+          // vez de mostrar um que não existe.
+          if (matricula.prazoFormatado != null)
+            'até ${matricula.prazoFormatado}',
+        ].join(' · '),
         style: tema.textTheme.muted,
       ),
       trailing: Row(

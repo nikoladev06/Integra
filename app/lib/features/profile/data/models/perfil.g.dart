@@ -22,12 +22,16 @@ Map<String, dynamic> _$UniversidadeToJson(_Universidade instance) =>
       'temConta': instance.temConta,
     };
 
-_Curso _$CursoFromJson(Map<String, dynamic> json) =>
-    _Curso(id: json['id'] as String, nome: json['nome'] as String);
+_Curso _$CursoFromJson(Map<String, dynamic> json) => _Curso(
+  id: json['id'] as String,
+  nome: json['nome'] as String,
+  duracaoSemestres: (json['duracaoSemestres'] as num?)?.toInt(),
+);
 
 Map<String, dynamic> _$CursoToJson(_Curso instance) => <String, dynamic>{
   'id': instance.id,
   'nome': instance.nome,
+  'duracaoSemestres': instance.duracaoSemestres,
 };
 
 _Formacao _$FormacaoFromJson(Map<String, dynamic> json) => _Formacao(

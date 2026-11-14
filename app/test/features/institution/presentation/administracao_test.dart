@@ -76,10 +76,39 @@ void main() {
       expect(find.text('Gestão Empresarial'), findsOne);
 
       await tester.enterText(find.byType(EditableText).first, 'Logística');
+      // O segundo campo é a duração, e ela é **obrigatória**: é o prazo de toda
+      // matrícula no curso.
+      await tester.enterText(find.byType(EditableText).at(1), '4');
       await tester.pumpAndSettle();
       await tocar(tester, find.text('Adicionar'));
 
       expect(find.text('Logística'), findsOne);
+      // 4 e não 6: os dois cursos das fixtures duram 6 semestres, e o número
+      // repetido não provaria que a duração nova chegou na lista.
+      expect(find.text('4 semestres'), findsOne);
+    });
+
+    testWidgets('curso sem duração é recusado antes de sair da tela', (
+      tester,
+    ) async {
+      await bombearAppAutenticado(tester, email: Fixtures.emailFaculdade);
+      await abrirAdministracao(tester);
+
+      await tester.enterText(find.byType(EditableText).first, 'Logística');
+      await tester.pumpAndSettle();
+      await tocar(tester, find.text('Adicionar'));
+
+      // Sem padrão silencioso: um curso sem duração declarada teria matrículas
+      // que nunca vencem, e a instituição não escolheu isso.
+      expect(
+        find.text('Informe a duração do curso, de 1 a 20 semestres'),
+        findsOne,
+      );
+      expect(
+        find.text('Logística'),
+        findsOne,
+        reason: 'segue no campo, não na lista',
+      );
     });
 
     testWidgets('nome repetido é recusado, sem diferenciar maiúsculas', (
@@ -92,6 +121,7 @@ void main() {
         find.byType(EditableText).first,
         'gestão empresarial',
       );
+      await tester.enterText(find.byType(EditableText).at(1), '6');
       await tester.pumpAndSettle();
       await tocar(tester, find.text('Adicionar'));
 

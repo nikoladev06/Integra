@@ -17,6 +17,7 @@ class MatriculaFalsa {
     required this.universidadeId,
     required this.cpf,
     required this.cursoId,
+    required this.criadoEm,
   });
 
   /// Existe porque a tela de administração remove matrícula **por id**, como o
@@ -28,6 +29,10 @@ class MatriculaFalsa {
   final String universidadeId;
   final String cpf;
   final String cursoId;
+
+  /// Quando a instituição cadastrou o CPF. **Começa aqui a contagem do prazo**:
+  /// a matrícula vale os semestres que o curso declara, contados desta data.
+  final DateTime criadoEm;
 }
 
 /// Um comunicado no banco falso.
@@ -212,6 +217,12 @@ class BancoFalso {
       usuarios[conta.id] = conta;
     }
     senhas.addAll(Fixtures.senhas);
+    // Um ano atrás: as turmas da demo estão no meio do curso, não na véspera do
+    // prazo. Uma data fixa no calendário envelheceria e um dia a demo abriria
+    // com todas as matrículas vencidas.
+    final matriculadasEm = DateTime.now().toUtc().subtract(
+      const Duration(days: 365),
+    );
     for (final (universidadeId, cpf, cursoId) in Fixtures.matriculas) {
       matriculas.add(
         MatriculaFalsa(
@@ -219,6 +230,7 @@ class BancoFalso {
           universidadeId: universidadeId,
           cpf: cpf,
           cursoId: cursoId,
+          criadoEm: matriculadasEm,
         ),
       );
     }

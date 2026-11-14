@@ -303,7 +303,7 @@ as bool,
 /// @nodoc
 mixin _$Curso {
 
- String get id; String get nome;
+ String get id; String get nome; int? get duracaoSemestres;
 /// Create a copy of Curso
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -317,20 +317,20 @@ $CursoCopyWith<Curso> get copyWith => _$CursoCopyWithImpl<Curso>(this as Curso, 
 @override
 bool operator ==(Object other) {
   final _this = this as Curso;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is Curso&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.nome, _this.nome) || other.nome == _this.nome));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Curso&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.nome, _this.nome) || other.nome == _this.nome)&&(identical(other.duracaoSemestres, _this.duracaoSemestres) || other.duracaoSemestres == _this.duracaoSemestres));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as Curso;
-  return Object.hash(runtimeType,_this.id,_this.nome);
+  return Object.hash(runtimeType,_this.id,_this.nome,_this.duracaoSemestres);
 }
 
 @override
 String toString() {
   final _this = this as Curso;
-  return 'Curso(id: ${_this.id}, nome: ${_this.nome})';
+  return 'Curso(id: ${_this.id}, nome: ${_this.nome}, duracaoSemestres: ${_this.duracaoSemestres})';
 }
 
 
@@ -341,7 +341,7 @@ abstract mixin class $CursoCopyWith<$Res>  {
   factory $CursoCopyWith(Curso value, $Res Function(Curso) _then) = _$CursoCopyWithImpl;
 @useResult
 $Res call({
- String id, String nome
+ String id, String nome, int? duracaoSemestres
 });
 
 
@@ -358,11 +358,12 @@ class _$CursoCopyWithImpl<$Res>
 
 /// Create a copy of Curso
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? nome = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? nome = null,Object? duracaoSemestres = freezed,}) {
   return _then(Curso(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,nome: null == nome ? _self.nome : nome // ignore: cast_nullable_to_non_nullable
-as String,
+as String,duracaoSemestres: freezed == duracaoSemestres ? _self.duracaoSemestres : duracaoSemestres // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 
@@ -447,10 +448,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String nome)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String nome,  int? duracaoSemestres)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _Curso() when $default != null:
-return $default(_that.id,_that.nome);case _:
+return $default(_that.id,_that.nome,_that.duracaoSemestres);case _:
   return orElse();
 
 }
@@ -468,10 +469,10 @@ return $default(_that.id,_that.nome);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String nome)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String nome,  int? duracaoSemestres)  $default,) {final _that = this;
 switch (_that) {
 case _Curso():
-return $default(_that.id,_that.nome);case _:
+return $default(_that.id,_that.nome,_that.duracaoSemestres);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -488,10 +489,10 @@ return $default(_that.id,_that.nome);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String nome)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String nome,  int? duracaoSemestres)?  $default,) {final _that = this;
 switch (_that) {
 case _Curso() when $default != null:
-return $default(_that.id,_that.nome);case _:
+return $default(_that.id,_that.nome,_that.duracaoSemestres);case _:
   return null;
 
 }
@@ -503,11 +504,12 @@ return $default(_that.id,_that.nome);case _:
 @JsonSerializable()
 
 class _Curso implements Curso {
-  const _Curso({required this.id, required this.nome});
+  const _Curso({required this.id, required this.nome, this.duracaoSemestres});
   factory _Curso.fromJson(Map<String, dynamic> json) => _$CursoFromJson(json);
 
 @override final  String id;
 @override final  String nome;
+@override final  int? duracaoSemestres;
 
 /// Create a copy of Curso
 /// with the given fields replaced by the non-null parameter values.
@@ -522,18 +524,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _Curso&&(identical(other.id, id) || other.id == id)&&(identical(other.nome, nome) || other.nome == nome));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _Curso&&(identical(other.id, id) || other.id == id)&&(identical(other.nome, nome) || other.nome == nome)&&(identical(other.duracaoSemestres, duracaoSemestres) || other.duracaoSemestres == duracaoSemestres));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,id,nome);
+    return Object.hash(runtimeType,id,nome,duracaoSemestres);
 }
 
 @override
 String toString() {
-    return 'Curso(id: $id, nome: $nome)';
+    return 'Curso(id: $id, nome: $nome, duracaoSemestres: $duracaoSemestres)';
 }
 
 
@@ -544,7 +546,7 @@ abstract mixin class _$CursoCopyWith<$Res> implements $CursoCopyWith<$Res> {
   factory _$CursoCopyWith(_Curso value, $Res Function(_Curso) _then) = __$CursoCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String nome
+ String id, String nome, int? duracaoSemestres
 });
 
 
@@ -561,11 +563,12 @@ class __$CursoCopyWithImpl<$Res>
 
 /// Create a copy of Curso
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? nome = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? nome = null,Object? duracaoSemestres = freezed,}) {
   return _then(_Curso(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,nome: null == nome ? _self.nome : nome // ignore: cast_nullable_to_non_nullable
-as String,
+as String,duracaoSemestres: freezed == duracaoSemestres ? _self.duracaoSemestres : duracaoSemestres // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 
